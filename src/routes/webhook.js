@@ -1,0 +1,252 @@
+const express = require('express');
+const { line, lineConfig } = require('../config/line');
+const lineService = require('../services/lineService');
+const storageService = require('../services/storageService');
+const ocrService = require('../services/ocrService');
+const transactionService = require('../services/transactionService');
+const summaryService = require('../services/summaryService');
+const budgetService = require('../services/budgetService');
+const exportService = require('../services/exportService');
+const { parseTextTransaction } = require('../parser/textParser');
+const { parseOcrText } = require('../parser/ocrParser');
+const { parseAmount, formatMoney } = require('../utils/moneyUtils');
+
+const router = express.Router();
+const hasLineCredentials = Boolean(lineConfig.channelAccessToken && lineConfig.channelSecret);
+const lineMiddleware = hasLineCredentials ? line.middleware(lineConfig) : express.json();
+
+router.post('/', lineMiddleware, async (req, res, next) => {
+  try {
+    if (!hasLineCredentials) {
+      return res.status(503).json({
+        error: 'LINE credentials are not configured',
+        requiredEnv: ['LINE_CHANNEL_ACCESS_TOKEN', 'LINE_CHANNEL_SECRET']
+      });
+    }
+    for (const event of req.body.events) {
+      await handleEvent(event);
+    }
+    res.status(200).end();
+  } catch (error) {
+    next(error);
+  }
+});
+
+async function handleEvent(event) {
+  if (event.type !== 'message') return;
+  const lineUserId = event.source.userId;
+  const user = transactionService.findOrCreateUser(lineUserId);
+
+  if (event.message.type === 'text') {
+    const reply = await handleText(user, event.message.text);
+    return lineService.replyText(event.replyToken, reply);
+  }
+
+  if (event.message.type === 'image') {
+    const reply = await handleImage(user, event.message.id);
+    return lineService.replyText(event.replyToken, reply);
+  }
+
+  return lineService.replyText(event.replyToken, 'ตอนนี้รองรับข้อความและรูปภาพเท่านั้นครับ');
+}
+
+async function handleText(user, text) {
+  const trimmed = text.trim();
+  const pending = transactionService.getLatestPending(user.id);
+  const isConfirm = /^(ยืนยัน|บันทึก|ตกลง|โอเค|ok|confirm|yes|ใช่)$/i.test(trimmed);
+  const isCancel = /^(ยกเลิก|cancel|no|ไม่|ไม่เอา)$/i.test(trimmed);
+
+  if (/^(help|วิธีใช้)$/i.test(trimmed)) return helpText();
+  if (isCancel && pending) {
+    transactionService.cancelTransaction(user.id, pending.id);
+    return 'ยกเลิกรายการที่รอตรวจสอบแล้ว';
+  }
+  if (isConfirm && pending) {
+    const deleted = transactionService.confirmDeleteLatest(user.id);
+    if (deleted) return `ลบรายการล่าสุดแล้ว: ${deleted.title} ${formatMoney(deleted.amount)} บาท`;
+    const confirmed = transactionService.confirmTransaction(user.id, pending.id);
+    const alerts = budgetService.getBudgetAlerts(user.id, confirmed.category);
+    return [`บันทึกแล้ว: ${confirmed.title} ${formatMoney(confirmed.amount)} บาท (${confirmed.category})`, ...alerts].join('\n');
+  }
+
+  if (/^ลบล่าสุด$/.test(trimmed)) {
+    const request = transactionService.requestDeleteLatest(user.id);
+    if (!request) return 'ยังไม่มีรายการให้ลบ';
+    return 'ต้องการลบรายการล่าสุดใช่ไหม? ตอบ "ยืนยัน" เพื่อลบ หรือ "ยกเลิก"';
+  }
+
+  const editReply = handleEdit(user, trimmed, pending ? 'pending' : 'confirmed');
+  if (editReply) return editReply;
+
+  const candidateReply = handlePendingCandidateSelection(user, pending, trimmed);
+  if (candidateReply) return candidateReply;
+
+  if (/^สรุปวันนี้$/.test(trimmed)) {
+    return summaryService.formatDailySummary(summaryService.dailySummary(user.id));
+  }
+  if (/^สรุปเดือนนี้$/.test(trimmed)) {
+    return summaryService.formatMonthlySummary(summaryService.monthlySummary(user.id));
+  }
+  if (/^export\s*เดือนนี้$/i.test(trimmed)) return exportService.exportTransactions(user.id, 'month');
+  if (/^export\s*ทั้งหมด$/i.test(trimmed)) return exportService.exportTransactions(user.id, 'all');
+
+  const budgetReply = handleBudget(user, trimmed);
+  if (budgetReply) return budgetReply;
+
+  const goalReply = handleGoal(user, trimmed);
+  if (goalReply) return goalReply;
+
+  if (pending && parseAmount(trimmed)) {
+    const updated = transactionService.updateLatest(user.id, { amount: parseAmount(trimmed) }, 'pending');
+    return formatPending(updated, 'แก้ยอดแล้ว ตรวจสอบอีกครั้ง แล้วตอบ "ยืนยัน" เพื่อบันทึก');
+  }
+
+  const parsed = parseTextTransaction(trimmed);
+  if (!parsed.ok) return 'ยังอ่านยอดเงินไม่ได้ครับ ลองพิมพ์เช่น "กาแฟ 45" หรือส่งรูปบิล/สลิปได้เลย';
+
+  const duplicate = transactionService.findDuplicate(user.id, parsed);
+  const status = duplicate ? 'pending' : 'confirmed';
+  const tx = transactionService.createTransaction(user.id, parsed, status);
+  if (duplicate) {
+    return [
+      'รายการนี้อาจซ้ำ ต้องการบันทึกหรือไม่?',
+      formatPending(tx),
+      'ตอบ "ยืนยัน" เพื่อบันทึก หรือ "ยกเลิก"'
+    ].join('\n');
+  }
+
+  const alerts = budgetService.getBudgetAlerts(user.id, tx.category);
+  return [`บันทึกแล้ว: ${tx.title} ${formatMoney(tx.amount)} บาท (${tx.category})`, ...alerts].join('\n');
+}
+
+function handlePendingCandidateSelection(user, pending, text) {
+  if (!pending) return null;
+  const candidates = parsePendingAmountCandidates(pending);
+  if (!candidates.length) return null;
+
+  const match = text.match(/^(?:เลือก(?:ข้อ)?\s*)?([1-9]\d*)$/);
+  if (!match) return null;
+
+  const selected = candidates[Number(match[1]) - 1];
+  if (!selected) return `มีตัวเลือก 1-${candidates.length} เท่านั้นครับ หรือพิมพ์ยอดเงินที่ถูกต้องได้เลย`;
+
+  const updated = transactionService.updateLatest(user.id, { amount: selected }, 'pending');
+  return formatPending(updated, `เลือกยอดข้อ ${match[1]} แล้ว ตรวจสอบอีกครั้ง แล้วตอบ "ยืนยัน" เพื่อบันทึก`);
+}
+
+function parsePendingAmountCandidates(pending) {
+  const match = String(pending.note || '').match(/amount candidates:\s*([0-9.,\s]+)/i);
+  if (!match) return [];
+  return match[1]
+    .split(',')
+    .map((item) => parseAmount(item))
+    .filter((amount) => amount && amount > 0);
+}
+
+async function handleImage(user, messageId) {
+  const stream = await lineService.getMessageContent(messageId);
+  const imagePath = await storageService.saveLineImageStream(stream, messageId);
+  const rawText = await ocrService.recognizeImage(imagePath);
+
+  if (!rawText.trim()) {
+    return 'OCR อ่านข้อความจากรูปไม่ได้ครับ กรุณาพิมพ์ยอดเอง เช่น "ข้าว 60"';
+  }
+
+  const parsed = parseOcrText(rawText);
+  if (!parsed.ok) {
+    return ['OCR อ่านข้อความได้ แต่ยังหาเงินไม่ได้ครับ กรุณาพิมพ์ยอดเอง', rawText.slice(0, 1000)].join('\n');
+  }
+
+  if (!parsed.amount && parsed.amountCandidates.length > 1) {
+    const tx = transactionService.createTransaction(user.id, {
+      ...parsed,
+      amount: parsed.amountCandidates[0].amount,
+      note: `amount candidates: ${parsed.amountCandidates.map((item) => item.amount).join(', ')}`,
+      imagePath
+    }, 'pending');
+    return [
+      'พบหลายยอดจากรูป ต้องการบันทึกยอดไหน?',
+      parsed.amountCandidates.map((item, index) => `${index + 1}. ${formatMoney(item.amount)} บาท (${item.line})`).join('\n'),
+      formatPending(tx, 'ตอนนี้ใส่ยอดแรกไว้ชั่วคราว พิมพ์ยอดที่ถูกต้องเพื่อแก้ แล้วตอบ "ยืนยัน"')
+    ].join('\n');
+  }
+
+  const tx = transactionService.createTransaction(user.id, { ...parsed, imagePath }, 'pending');
+  return formatPending(tx, 'ตรวจสอบข้อมูลจาก OCR แล้วตอบ "ยืนยัน" เพื่อบันทึก หรือ "ยกเลิก"');
+}
+
+function handleEdit(user, text, status) {
+  const amountMatch = text.match(/^แก้ล่าสุด\s+(\d[\d,]*(?:\.\d{1,2})?)$/);
+  if (amountMatch) {
+    const tx = transactionService.updateLatest(user.id, { amount: parseAmount(amountMatch[1]) }, status);
+    return tx ? `แก้ยอดแล้ว: ${tx.title} ${formatMoney(tx.amount)} บาท` : 'ยังไม่มีรายการให้แก้';
+  }
+
+  const categoryMatch = text.match(/^แก้หมวดล่าสุด\s+(.+)$/);
+  if (categoryMatch) {
+    const tx = transactionService.updateLatest(user.id, { category: categoryMatch[1].trim() }, status);
+    return tx ? `แก้หมวดแล้ว: ${tx.title} (${tx.category})` : 'ยังไม่มีรายการให้แก้';
+  }
+
+  const titleMatch = text.match(/^แก้ชื่อรายการล่าสุด\s+(.+)$/);
+  if (titleMatch) {
+    const tx = transactionService.updateLatest(user.id, { title: titleMatch[1].trim() }, status);
+    return tx ? `แก้ชื่อแล้ว: ${tx.title}` : 'ยังไม่มีรายการให้แก้';
+  }
+
+  return null;
+}
+
+function handleBudget(user, text) {
+  const total = text.match(/^ตั้งงบ\s+(\d[\d,]*(?:\.\d{1,2})?)$/);
+  if (total) {
+    const budget = budgetService.setBudget(user.id, 'ทั้งหมด', parseAmount(total[1]));
+    return `ตั้งงบเดือนนี้ ${formatMoney(budget.amount)} บาทแล้ว`;
+  }
+
+  const category = text.match(/^งบ(.+?)\s+(\d[\d,]*(?:\.\d{1,2})?)$/);
+  if (category) {
+    const budget = budgetService.setBudget(user.id, category[1].trim(), parseAmount(category[2]));
+    return `ตั้งงบ${budget.category} ${formatMoney(budget.amount)} บาทแล้ว`;
+  }
+
+  return null;
+}
+
+function handleGoal(user, text) {
+  const match = text.match(/^ตั้งเป้า\s+(.+?)\s+(\d[\d,]*(?:\.\d{1,2})?)\s+ใน\s+(\d+)\s+เดือน$/);
+  if (!match) return null;
+  const goal = budgetService.createGoal(user.id, match[1].trim(), parseAmount(match[2]), Number(match[3]));
+  return `ตั้งเป้า ${goal.name} ${formatMoney(goal.targetAmount)} บาท ภายใน ${goal.months} เดือน ต้องเก็บเดือนละประมาณ ${formatMoney(goal.monthlySaving)} บาท`;
+}
+
+function formatPending(tx, heading = 'รอตรวจสอบ') {
+  return [
+    heading,
+    `ประเภท: ${tx.type}`,
+    `รายการ: ${tx.title}`,
+    `ยอด: ${formatMoney(tx.amount)} บาท`,
+    `หมวด: ${tx.category}`,
+    `วันที่: ${tx.transactionDate}`,
+    'ตอบ "ยืนยัน" เพื่อบันทึก, "ยกเลิก" เพื่อยกเลิก หรือใช้คำสั่งแก้ล่าสุด'
+  ].join('\n');
+}
+
+function helpText() {
+  return [
+    'คำสั่ง LINE Expense Tracker Bot',
+    '- รายจ่าย: กาแฟ 45, จ่าย ข้าว 60, ซื้อของ 1200 หมวด ของใช้',
+    '- รายรับ: รับ เงินเดือน 18000, ได้เงิน 1000',
+    '- รูปภาพ: ส่งรูปบิล/สลิป แล้วตอบ ยืนยัน หลังตรวจสอบ',
+    '- แก้ไข: แก้ล่าสุด 120, แก้หมวดล่าสุด อาหาร, แก้ชื่อรายการล่าสุด ข้าวเที่ยง',
+    '- ลบ: ลบล่าสุด แล้วตอบ ยืนยัน',
+    '- สรุป: สรุปวันนี้, สรุปเดือนนี้',
+    '- งบ: ตั้งงบ 8000, งบอาหาร 3000',
+    '- เป้า: ตั้งเป้า iPad 18000 ใน 6 เดือน',
+    '- Export: export เดือนนี้, export ทั้งหมด'
+  ].join('\n');
+}
+
+module.exports = router;
+module.exports.handleText = handleText;
+module.exports.handleImage = handleImage;

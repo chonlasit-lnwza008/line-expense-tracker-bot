@@ -1,0 +1,30 @@
+{
+  "name": "line-expense-tracker-bot",
+  "version": "1.0.0",
+  "description": "Free-tier friendly LINE Bot for Thai personal income and expense tracking.",
+  "main": "src/app.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node --no-warnings src/app.js",
+    "dev": "node --no-warnings --watch src/app.js",
+    "tunnel": "lt --port 3000",
+    "tunnel:ngrok": "ngrok http 3000",
+    "tunnel:cloudflare": "cloudflared tunnel --url http://localhost:3000",
+    "simulate": "node --no-warnings src/dev/simulateMessage.js",
+    "migrate": "node --no-warnings src/database/migrations.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@line/bot-sdk": "^9.5.0",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "tesseract.js": "^6.0.0"
+  },
+  "devDependencies": {
+    "localtunnel": "^2.0.2"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "license": "MIT"
+}
