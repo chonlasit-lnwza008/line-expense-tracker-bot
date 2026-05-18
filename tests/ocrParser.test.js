@@ -95,3 +95,20 @@ test('prefers merchant over successful payment header on slips', () => {
   assert.equal(result.amount, 80);
   assert.equal(result.title, 'พาร์ค ก๋วยเตี๋ยวเรือ');
 });
+
+test('accepts noisy slip amount when baht is misread', () => {
+  const text = [
+    'โอนเงินสำเร็จ',
+    '18 พ.ค. 69 19:45 น.',
+    'Prompt Pay รหัสพร้อมเพย์',
+    'เลขที่รายการ: 016138194554BPP07660',
+    'จำนวน:',
+    '1,400.00 บท',
+    'ค่าธรรมเนียม:',
+    '0.00 บาท'
+  ].join('\n');
+  const result = parseOcrText(text);
+  assert.equal(result.source, 'slip');
+  assert.equal(result.amount, 1400);
+  assert.deepEqual(result.amountCandidates.map((item) => item.amount), [1400]);
+});

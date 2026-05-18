@@ -2,8 +2,8 @@ const { detectCategory } = require('./categoryRules');
 const { parseAmount } = require('../utils/moneyUtils');
 const { toDateOnly } = require('../utils/dateUtils');
 
-const totalKeywords = ['ยอดรวม', 'รวม', 'total', 'amount', 'จำนวนเงิน', 'ยอดเงิน', 'สุทธิ'];
-const amountContextKeywords = ['บาท', '฿', 'ยอด', 'รวม', 'จำนวนเงิน', 'ยอดเงิน', 'สุทธิ', 'total', 'amount'];
+const totalKeywords = ['ยอดรวม', 'รวม', 'total', 'amount', 'จำนวน', 'จำนวนเงิน', 'ยอดเงิน', 'สุทธิ'];
+const amountContextKeywords = ['บาท', 'บท', 'บ.', '฿', 'ยอด', 'รวม', 'จำนวน', 'จำนวนเงิน', 'ยอดเงิน', 'สุทธิ', 'total', 'amount', 'thb'];
 const referenceKeywords = ['เลขที่รายการ', 'เลขอ้างอิง', 'อ้างอิง', 'reference', 'ref', 'transaction', 'บัญชี', 'account'];
 
 function hasAmountContext(line) {
@@ -116,7 +116,7 @@ function extractReference(rawText = '') {
 
 function extractMerchant(rawText = '') {
   const lines = rawText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const ignored = /ยอด|รวม|บาท|วันที่|เวลา|ref|เลข|ภาษี|tax|total|amount|จำนวนเงิน|ค่าธรรมเนียม|บัญชี|account|พร้อมเพย์|promptpay|qr payment|ธนาคาร|ธ\.|xxx|สำเร็จ/i;
+  const ignored = /ยอด|รวม|บาท|บท|วันที่|เวลา|ref|เลข|ภาษี|tax|total|amount|จำนวน|จำนวนเงิน|ค่าธรรมเนียม|บัญชี|account|พร้อมเพย์|promptpay|qr payment|ธนาคาร|ธ\.|xxx|สำเร็จ/i;
   const shopKeywords = /ร้าน|ก๋วยเตี๋ยว|กาแฟ|คาเฟ่|ข้าว|อาหาร|ชานม|หมูกระทะ|ตลาด|market|coffee|cafe|restaurant|food|shop|store/i;
 
   const candidates = lines
