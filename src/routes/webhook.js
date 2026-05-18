@@ -43,8 +43,14 @@ async function handleEvent(event) {
   }
 
   if (event.message.type === 'image') {
-    const reply = await handleImage(user, event.message.id);
-    return lineService.replyText(event.replyToken, reply);
+    processImageAndPush(user, event.message.id).catch((error) => {
+      console.error('Image OCR failed:', error);
+      return lineService.pushText(
+        user.lineUserId,
+        'อ่านรูปสลิปไม่สำเร็จครับ ลองส่งรูปที่ชัดขึ้น หรือพิมพ์ยอดเอง เช่น "กาแฟ 45"'
+      ).catch((pushError) => console.error('Failed to push OCR error:', pushError));
+    });
+    return lineService.replyText(event.replyToken, 'รับรูปแล้วครับ กำลังอ่านสลิปด้วย OCR สักครู่เดี๋ยวส่งผลให้ตรวจสอบ');
   }
 
   return lineService.replyText(event.replyToken, 'ตอนนี้รองรับข้อความและรูปภาพเท่านั้นครับ');
@@ -81,7 +87,7 @@ async function handleText(user, text) {
   const candidateReply = handlePendingCandidateSelection(user, pending, trimmed);
   if (candidateReply) return candidateReply;
 
-  if (/^สรุปวันนี้$/.test(trimmed)) {
+  if (/^(สรุป|สรุปยอด|สรุปวันนี้)$/.test(trimmed)) {
     return summaryService.formatDailySummary(summaryService.dailySummary(user.id));
   }
   if (/^สรุปเดือนนี้$/.test(trimmed)) {
@@ -173,6 +179,11 @@ async function handleImage(user, messageId) {
 
   const tx = transactionService.createTransaction(user.id, { ...parsed, imagePath }, 'pending');
   return formatPending(tx, 'ตรวจสอบข้อมูลจาก OCR แล้วตอบ "ยืนยัน" เพื่อบันทึก หรือ "ยกเลิก"');
+}
+
+async function processImageAndPush(user, messageId) {
+  const reply = await handleImage(user, messageId);
+  await lineService.pushText(user.lineUserId, reply);
 }
 
 function handleEdit(user, text, status) {

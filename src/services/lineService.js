@@ -7,11 +7,19 @@ async function replyText(replyToken, text) {
   });
 }
 
+async function pushText(to, text) {
+  return lineClient.pushMessage({
+    to,
+    messages: [{ type: 'text', text: String(text).slice(0, 4900) }]
+  });
+}
+
 async function getMessageContent(messageId) {
   return blobClient.getMessageContent(messageId);
 }
 
 module.exports = {
   replyText,
+  pushText,
   getMessageContent
 };
