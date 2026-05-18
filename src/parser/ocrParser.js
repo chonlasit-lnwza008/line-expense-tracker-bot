@@ -116,8 +116,28 @@ function extractReference(rawText = '') {
 
 function extractMerchant(rawText = '') {
   const lines = rawText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const ignored = /ยอด|รวม|บาท|วันที่|เวลา|ref|เลข|ภาษี|tax|total|amount/i;
-  return lines.find((line) => line.length >= 2 && !ignored.test(line)) || 'รายการจากรูปภาพ';
+  const ignored = /ยอด|รวม|บาท|วันที่|เวลา|ref|เลข|ภาษี|tax|total|amount|จำนวนเงิน|ค่าธรรมเนียม|บัญชี|account|พร้อมเพย์|promptpay|qr payment|ธนาคาร|ธ\.|xxx|สำเร็จ/i;
+  const shopKeywords = /ร้าน|ก๋วยเตี๋ยว|กาแฟ|คาเฟ่|ข้าว|อาหาร|ชานม|หมูกระทะ|ตลาด|market|coffee|cafe|restaurant|food|shop|store/i;
+
+  const candidates = lines
+    .filter((line) => {
+      if (line.length < 2) return false;
+      if (ignored.test(line)) return false;
+      if (isDateOrTimeLine(line)) return false;
+      if (/^\d[\d,]*(?:\.\d{1,2})?$/.test(line)) return false;
+      if (/^[A-Z0-9-]{8,}$/i.test(line.replace(/\s/g, ''))) return false;
+      return true;
+    })
+    .map((line, index) => {
+      let score = 1;
+      if (shopKeywords.test(line)) score += 10;
+      if (/(นาย|นาง|น\.ส\.|mr\.|mrs\.|ms\.)/i.test(line)) score -= 2;
+      if (index > 0) score += 1;
+      return { line, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  return candidates[0]?.line || 'รายการจากรูปภาพ';
 }
 
 function detectOcrType(rawText = '') {

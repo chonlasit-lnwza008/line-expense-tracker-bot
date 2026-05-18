@@ -75,3 +75,23 @@ test('uses nearby amount context when OCR splits amount label and value', () => 
   assert.equal(result.amount, 220);
   assert.deepEqual(result.amountCandidates.map((item) => item.amount), [220]);
 });
+
+test('prefers merchant over successful payment header on slips', () => {
+  const text = [
+    'ชำระเงินสำเร็จ',
+    '18 พ.ค. 69 13:01 น.',
+    'นาย ชลสิทธิ์ ท',
+    'ธ.กสิกรไทย',
+    'xxx-x-x9142-x',
+    'พาร์ค ก๋วยเตี๋ยวเรือ',
+    'น.ส. เพชรินทร์',
+    '202605181486343',
+    'เลขที่รายการ: 016138130159BQR00175',
+    'จำนวนเงิน',
+    '80.00 บาท',
+    'ค่าธรรมเนียม 0.00 บาท'
+  ].join('\n');
+  const result = parseOcrText(text);
+  assert.equal(result.amount, 80);
+  assert.equal(result.title, 'พาร์ค ก๋วยเตี๋ยวเรือ');
+});
