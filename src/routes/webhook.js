@@ -33,27 +33,47 @@ router.post('/', lineMiddleware, async (req, res, next) => {
 });
 
 async function handleEvent(event) {
-  if (event.type !== 'message') return;
-  const lineUserId = event.source.userId;
+  const lineUserId = event.source && event.source.userId;
+  if (!lineUserId) return;
   const user = transactionService.findOrCreateUser(lineUserId);
+
+  if (event.type === 'postback') {
+    const reply = handlePostback(user, event.postback && event.postback.data);
+    return replyToLine(event.replyToken, reply);
+  }
+
+  if (event.type !== 'message') return;
 
   if (event.message.type === 'text') {
     const reply = await handleText(user, event.message.text);
-    return lineService.replyText(event.replyToken, reply);
+    return replyToLine(event.replyToken, reply);
   }
 
   if (event.message.type === 'image') {
     processImageAndPush(user, event.message.id).catch((error) => {
       console.error('Image OCR failed:', error);
-      return lineService.pushText(
+      return pushToLine(
         user.lineUserId,
-        'อ่านรูปสลิปไม่สำเร็จครับ ลองส่งรูปที่ชัดขึ้น หรือพิมพ์ยอดเอง เช่น "กาแฟ 45"'
+        buildErrorFlex('อ่านรูปไม่สำเร็จ', 'ลองส่งรูปที่ชัดขึ้น หรือพิมพ์ยอดเอง เช่น "กาแฟ 45"')
       ).catch((pushError) => console.error('Failed to push OCR error:', pushError));
     });
-    return lineService.replyText(event.replyToken, 'รับรูปแล้วครับ กำลังอ่านสลิปด้วย OCR สักครู่เดี๋ยวส่งผลให้ตรวจสอบ');
+    return replyToLine(event.replyToken, buildProcessingFlex());
   }
 
-  return lineService.replyText(event.replyToken, 'ตอนนี้รองรับข้อความและรูปภาพเท่านั้นครับ');
+  return replyToLine(event.replyToken, 'ตอนนี้รองรับข้อความและรูปภาพเท่านั้นครับ');
+}
+
+function normalizeLineMessage(reply) {
+  if (typeof reply === 'string') return { type: 'text', text: String(reply).slice(0, 4900) };
+  return reply;
+}
+
+function replyToLine(replyToken, reply) {
+  return lineService.replyMessages(replyToken, normalizeLineMessage(reply));
+}
+
+function pushToLine(to, reply) {
+  return lineService.pushMessages(to, normalizeLineMessage(reply));
 }
 
 async function handleText(user, text) {
@@ -125,6 +145,54 @@ async function handleText(user, text) {
   return [`บันทึกแล้ว: ${tx.title} ${formatMoney(tx.amount)} บาท (${tx.category})`, ...alerts].join('\n');
 }
 
+function handlePostback(user, data = '') {
+  const params = new URLSearchParams(data);
+  const action = params.get('action');
+  const pending = transactionService.getLatestPending(user.id);
+
+  if (!pending) {
+    return buildErrorFlex('ไม่มีรายการรอตรวจสอบ', 'ส่งสลิปใหม่ หรือพิมพ์รายการ เช่น "กาแฟ 45" ได้เลย');
+  }
+
+  if (action === 'confirm') {
+    const deleted = transactionService.confirmDeleteLatest(user.id);
+    if (deleted) {
+      return buildResultFlex('ลบรายการแล้ว', [
+        ['รายการ', deleted.title],
+        ['ยอด', `${formatMoney(deleted.amount)} บาท`]
+      ], '#dc2626');
+    }
+
+    const confirmed = transactionService.confirmTransaction(user.id, pending.id);
+    const alerts = budgetService.getBudgetAlerts(user.id, confirmed.category);
+    return buildResultFlex('บันทึกแล้ว', [
+      ['รายการ', confirmed.title],
+      ['ยอด', `${formatMoney(confirmed.amount)} บาท`],
+      ['หมวด', confirmed.category],
+      ['วันที่', confirmed.transactionDate],
+      ...alerts.map((alert) => ['แจ้งเตือน', alert])
+    ]);
+  }
+
+  if (action === 'cancel') {
+    transactionService.cancelTransaction(user.id, pending.id);
+    return buildResultFlex('ยกเลิกแล้ว', [
+      ['สถานะ', 'รายการนี้ไม่ถูกบันทึก']
+    ], '#6b7280');
+  }
+
+  if (action === 'select_amount') {
+    const candidates = parsePendingAmountCandidates(pending);
+    const selected = candidates[Number(params.get('index')) - 1];
+    if (!selected) return buildErrorFlex('เลือกยอดไม่ได้', 'ลองพิมพ์ยอดที่ถูกต้องเอง เช่น "80"');
+
+    const updated = transactionService.updateLatest(user.id, { amount: selected }, 'pending');
+    return buildPendingFlex(updated, { heading: 'เลือกยอดแล้ว ตรวจสอบอีกครั้ง' });
+  }
+
+  return buildErrorFlex('คำสั่งไม่ถูกต้อง', 'ลองส่งรายการใหม่ หรือพิมพ์ help เพื่อดูคำสั่ง');
+}
+
 function handlePendingCandidateSelection(user, pending, text) {
   if (!pending) return null;
   const candidates = parsePendingAmountCandidates(pending);
@@ -155,12 +223,12 @@ async function handleImage(user, messageId) {
   const rawText = await ocrService.recognizeImage(imagePath);
 
   if (!rawText.trim()) {
-    return 'OCR อ่านข้อความจากรูปไม่ได้ครับ กรุณาพิมพ์ยอดเอง เช่น "ข้าว 60"';
+    return buildErrorFlex('OCR อ่านรูปไม่ออก', 'กรุณาพิมพ์ยอดเอง เช่น "ข้าว 60"');
   }
 
   const parsed = parseOcrText(rawText);
   if (!parsed.ok) {
-    return ['OCR อ่านข้อความได้ แต่ยังหาเงินไม่ได้ครับ กรุณาพิมพ์ยอดเอง', rawText.slice(0, 1000)].join('\n');
+    return buildErrorFlex('ยังหาเงินจากสลิปไม่ได้', 'OCR อ่านข้อความได้ แต่ยังไม่เจอยอดที่มั่นใจ กรุณาพิมพ์ยอดเอง เช่น "กาแฟ 45"');
   }
 
   if (!parsed.amount && parsed.amountCandidates.length > 1) {
@@ -170,20 +238,19 @@ async function handleImage(user, messageId) {
       note: `amount candidates: ${parsed.amountCandidates.map((item) => item.amount).join(', ')}`,
       imagePath
     }, 'pending');
-    return [
-      'พบหลายยอดจากรูป ต้องการบันทึกยอดไหน?',
-      parsed.amountCandidates.map((item, index) => `${index + 1}. ${formatMoney(item.amount)} บาท (${item.line})`).join('\n'),
-      formatPending(tx, 'ตอนนี้ใส่ยอดแรกไว้ชั่วคราว พิมพ์ยอดที่ถูกต้องเพื่อแก้ แล้วตอบ "ยืนยัน"')
-    ].join('\n');
+    return buildPendingFlex(tx, {
+      heading: 'พบหลายยอดจากสลิป',
+      candidates: parsed.amountCandidates
+    });
   }
 
   const tx = transactionService.createTransaction(user.id, { ...parsed, imagePath }, 'pending');
-  return formatPending(tx, 'ตรวจสอบข้อมูลจาก OCR แล้วตอบ "ยืนยัน" เพื่อบันทึก หรือ "ยกเลิก"');
+  return buildPendingFlex(tx, { heading: 'ตรวจสอบก่อนบันทึก' });
 }
 
 async function processImageAndPush(user, messageId) {
   const reply = await handleImage(user, messageId);
-  await lineService.pushText(user.lineUserId, reply);
+  await pushToLine(user.lineUserId, reply);
 }
 
 function handleEdit(user, text, status) {
@@ -229,6 +296,181 @@ function handleGoal(user, text) {
   if (!match) return null;
   const goal = budgetService.createGoal(user.id, match[1].trim(), parseAmount(match[2]), Number(match[3]));
   return `ตั้งเป้า ${goal.name} ${formatMoney(goal.targetAmount)} บาท ภายใน ${goal.months} เดือน ต้องเก็บเดือนละประมาณ ${formatMoney(goal.monthlySaving)} บาท`;
+}
+
+function flexMessage(altText, contents) {
+  return { type: 'flex', altText, contents };
+}
+
+function buildProcessingFlex() {
+  return flexMessage('กำลังอ่านสลิปด้วย OCR', {
+    type: 'bubble',
+    size: 'mega',
+    header: flexHeader('กำลังอ่านสลิป', 'OCR ฟรีอาจใช้เวลาสักครู่', '#0f766e'),
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'md',
+      contents: [
+        flexText('รับรูปแล้วครับ', { weight: 'bold', size: 'xl' }),
+        flexText('ระบบกำลังดึงข้อความและยอดเงินจากรูป แล้วจะส่งการ์ดตรวจสอบกลับมาให้กดยืนยันก่อนบันทึก', {
+          color: '#4b5563',
+          wrap: true
+        }),
+        flexText('ยังไม่มีการบันทึกรายการในขั้นตอนนี้', { size: 'sm', color: '#0f766e', weight: 'bold' })
+      ]
+    }
+  });
+}
+
+function buildPendingFlex(tx, options = {}) {
+  const candidates = Array.isArray(options.candidates) ? options.candidates.slice(0, 3) : [];
+  const candidateButtons = candidates.map((item, index) => ({
+    type: 'button',
+    style: 'secondary',
+    height: 'sm',
+    action: {
+      type: 'postback',
+      label: `เลือก ${formatMoney(item.amount)}`,
+      data: `action=select_amount&index=${index + 1}`,
+      displayText: `เลือกยอด ${formatMoney(item.amount)}`
+    }
+  }));
+
+  const bodyContents = [
+    flexText(tx.title || 'รายการจากสลิป', { weight: 'bold', size: 'xl', wrap: true }),
+    detailRow('ยอด', `${formatMoney(tx.amount)} บาท`, true),
+    detailRow('ประเภท', tx.type || '-'),
+    detailRow('หมวด', tx.category || '-'),
+    detailRow('วันที่', tx.transactionDate || '-'),
+    flexText('ตรวจสอบก่อนกดยืนยัน ระบบจะยังไม่บันทึกจนกว่าจะกดปุ่ม', {
+      size: 'xs',
+      color: '#0f766e',
+      wrap: true
+    })
+  ];
+
+  if (candidates.length) {
+    bodyContents.push({
+      type: 'box',
+      layout: 'vertical',
+      margin: 'md',
+      spacing: 'xs',
+      contents: [
+        flexText('ยอดที่ OCR พบ', { size: 'sm', weight: 'bold', color: '#374151' }),
+        ...candidates.map((item, index) => flexText(`${index + 1}. ${formatMoney(item.amount)} บาท`, {
+          size: 'sm',
+          color: '#4b5563'
+        }))
+      ]
+    });
+  }
+
+  return flexMessage('ตรวจสอบรายการก่อนบันทึก', {
+    type: 'bubble',
+    size: 'mega',
+    header: flexHeader(options.heading || 'ตรวจสอบก่อนบันทึก', 'กดยืนยันเมื่อข้อมูลถูกต้อง', '#0f766e'),
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'md',
+      contents: bodyContents
+    },
+    footer: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'sm',
+      contents: [
+        ...candidateButtons,
+        {
+          type: 'button',
+          style: 'primary',
+          color: '#16a34a',
+          action: { type: 'postback', label: 'ยืนยันบันทึก', data: 'action=confirm', displayText: 'ยืนยัน' }
+        },
+        {
+          type: 'button',
+          style: 'secondary',
+          action: { type: 'postback', label: 'ยกเลิก', data: 'action=cancel', displayText: 'ยกเลิก' }
+        }
+      ]
+    }
+  });
+}
+
+function buildResultFlex(title, rows, color = '#16a34a') {
+  return flexMessage(title, {
+    type: 'bubble',
+    size: 'mega',
+    header: flexHeader(title, 'LINE Expense Tracker Bot', color),
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'md',
+      contents: rows.map(([label, value]) => detailRow(label, value, label === 'ยอด'))
+    }
+  });
+}
+
+function buildErrorFlex(title, detail) {
+  return flexMessage(title, {
+    type: 'bubble',
+    size: 'mega',
+    header: flexHeader(title, 'ยังไม่มีการบันทึกรายการ', '#dc2626'),
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'md',
+      contents: [
+        flexText(detail, { wrap: true, color: '#4b5563' }),
+        flexText('เพื่อความชัวร์ รายการจาก OCR ต้องให้คุณยืนยันก่อนเสมอ', {
+          size: 'xs',
+          color: '#6b7280',
+          wrap: true
+        })
+      ]
+    }
+  });
+}
+
+function flexHeader(title, subtitle, color) {
+  return {
+    type: 'box',
+    layout: 'vertical',
+    paddingAll: '16px',
+    backgroundColor: color,
+    contents: [
+      flexText(title, { color: '#ffffff', weight: 'bold', size: 'lg', wrap: true }),
+      flexText(subtitle, { color: '#dcfce7', size: 'xs', margin: 'sm', wrap: true })
+    ]
+  };
+}
+
+function detailRow(label, value, strong = false) {
+  return {
+    type: 'box',
+    layout: 'baseline',
+    spacing: 'sm',
+    contents: [
+      flexText(label, { size: 'sm', color: '#6b7280', flex: 2 }),
+      flexText(String(value || '-'), {
+        size: strong ? 'lg' : 'sm',
+        color: '#111827',
+        weight: strong ? 'bold' : 'regular',
+        flex: 5,
+        wrap: true
+      })
+    ]
+  };
+}
+
+function flexText(text, options = {}) {
+  return {
+    type: 'text',
+    text: String(text || '-').slice(0, 300),
+    wrap: Boolean(options.wrap),
+    ...options
+  };
 }
 
 function formatPending(tx, heading = 'รอตรวจสอบ') {
