@@ -82,23 +82,32 @@ async function handleText(user, text) {
   const isConfirm = /^(ยืนยัน|บันทึก|ตกลง|โอเค|ok|confirm|yes|ใช่)$/i.test(trimmed);
   const isCancel = /^(ยกเลิก|cancel|no|ไม่|ไม่เอา)$/i.test(trimmed);
 
-  if (/^(help|วิธีใช้)$/i.test(trimmed)) return helpText();
+  if (/^(help|วิธีใช้)$/i.test(trimmed)) return buildHelpFlex();
   if (isCancel && pending) {
     transactionService.cancelTransaction(user.id, pending.id);
-    return 'ยกเลิกรายการที่รอตรวจสอบแล้ว';
+    return buildResultFlex('ยกเลิกแล้ว', [
+      ['สถานะ', 'รายการนี้ไม่ถูกบันทึก']
+    ], '#6b7280');
   }
   if (isConfirm && pending) {
     const deleted = transactionService.confirmDeleteLatest(user.id);
-    if (deleted) return `ลบรายการล่าสุดแล้ว: ${deleted.title} ${formatMoney(deleted.amount)} บาท`;
+    if (deleted) {
+      return buildResultFlex('ลบรายการแล้ว', [
+        ['รายการ', deleted.title],
+        ['ยอด', `${formatMoney(deleted.amount)} บาท`]
+      ], '#dc2626');
+    }
     const confirmed = transactionService.confirmTransaction(user.id, pending.id);
     const alerts = budgetService.getBudgetAlerts(user.id, confirmed.category);
-    return [`บันทึกแล้ว: ${confirmed.title} ${formatMoney(confirmed.amount)} บาท (${confirmed.category})`, ...alerts].join('\n');
+    return buildSavedFlex(confirmed, alerts);
   }
 
   if (/^ลบล่าสุด$/.test(trimmed)) {
     const request = transactionService.requestDeleteLatest(user.id);
-    if (!request) return 'ยังไม่มีรายการให้ลบ';
-    return 'ต้องการลบรายการล่าสุดใช่ไหม? ตอบ "ยืนยัน" เพื่อลบ หรือ "ยกเลิก"';
+    if (!request) return buildErrorFlex('ยังไม่มีรายการให้ลบ', 'บันทึกรายการก่อน แล้วค่อยใช้คำสั่งลบล่าสุด');
+    const targetId = Number(String(request.title).split(':')[1]);
+    const target = transactionService.getTransaction(targetId) || request;
+    return buildDeleteConfirmFlex(target);
   }
 
   const editReply = handleEdit(user, trimmed, pending ? 'pending' : 'confirmed');
@@ -108,10 +117,10 @@ async function handleText(user, text) {
   if (candidateReply) return candidateReply;
 
   if (/^(สรุป|สรุปยอด|สรุปวันนี้)$/.test(trimmed)) {
-    return summaryService.formatDailySummary(summaryService.dailySummary(user.id));
+    return buildDailySummaryFlex(summaryService.dailySummary(user.id));
   }
   if (/^สรุปเดือนนี้$/.test(trimmed)) {
-    return summaryService.formatMonthlySummary(summaryService.monthlySummary(user.id));
+    return buildMonthlySummaryFlex(summaryService.monthlySummary(user.id));
   }
   if (/^export\s*เดือนนี้$/i.test(trimmed)) return exportService.exportTransactions(user.id, 'month');
   if (/^export\s*ทั้งหมด$/i.test(trimmed)) return exportService.exportTransactions(user.id, 'all');
@@ -124,25 +133,21 @@ async function handleText(user, text) {
 
   if (pending && parseAmount(trimmed)) {
     const updated = transactionService.updateLatest(user.id, { amount: parseAmount(trimmed) }, 'pending');
-    return formatPending(updated, 'แก้ยอดแล้ว ตรวจสอบอีกครั้ง แล้วตอบ "ยืนยัน" เพื่อบันทึก');
+    return buildPendingFlex(updated, { heading: 'แก้ยอดแล้ว ตรวจสอบอีกครั้ง' });
   }
 
   const parsed = parseTextTransaction(trimmed);
-  if (!parsed.ok) return 'ยังอ่านยอดเงินไม่ได้ครับ ลองพิมพ์เช่น "กาแฟ 45" หรือส่งรูปบิล/สลิปได้เลย';
+  if (!parsed.ok) return buildErrorFlex('ยังอ่านยอดเงินไม่ได้', 'ลองพิมพ์เช่น "กาแฟ 45" หรือส่งรูปบิล/สลิปได้เลย');
 
   const duplicate = transactionService.findDuplicate(user.id, parsed);
   const status = duplicate ? 'pending' : 'confirmed';
   const tx = transactionService.createTransaction(user.id, parsed, status);
   if (duplicate) {
-    return [
-      'รายการนี้อาจซ้ำ ต้องการบันทึกหรือไม่?',
-      formatPending(tx),
-      'ตอบ "ยืนยัน" เพื่อบันทึก หรือ "ยกเลิก"'
-    ].join('\n');
+    return buildPendingFlex(tx, { heading: 'รายการนี้อาจซ้ำ' });
   }
 
   const alerts = budgetService.getBudgetAlerts(user.id, tx.category);
-  return [`บันทึกแล้ว: ${tx.title} ${formatMoney(tx.amount)} บาท (${tx.category})`, ...alerts].join('\n');
+  return buildSavedFlex(tx, alerts);
 }
 
 function handlePostback(user, data = '') {
@@ -279,13 +284,19 @@ function handleBudget(user, text) {
   const total = text.match(/^ตั้งงบ\s+(\d[\d,]*(?:\.\d{1,2})?)$/);
   if (total) {
     const budget = budgetService.setBudget(user.id, 'ทั้งหมด', parseAmount(total[1]));
-    return `ตั้งงบเดือนนี้ ${formatMoney(budget.amount)} บาทแล้ว`;
+    return buildResultFlex('ตั้งงบแล้ว', [
+      ['หมวด', budget.category],
+      ['งบเดือนนี้', `${formatMoney(budget.amount)} บาท`]
+    ], '#2563eb');
   }
 
   const category = text.match(/^งบ(.+?)\s+(\d[\d,]*(?:\.\d{1,2})?)$/);
   if (category) {
     const budget = budgetService.setBudget(user.id, category[1].trim(), parseAmount(category[2]));
-    return `ตั้งงบ${budget.category} ${formatMoney(budget.amount)} บาทแล้ว`;
+    return buildResultFlex('ตั้งงบแล้ว', [
+      ['หมวด', budget.category],
+      ['งบเดือนนี้', `${formatMoney(budget.amount)} บาท`]
+    ], '#2563eb');
   }
 
   return null;
@@ -295,7 +306,12 @@ function handleGoal(user, text) {
   const match = text.match(/^ตั้งเป้า\s+(.+?)\s+(\d[\d,]*(?:\.\d{1,2})?)\s+ใน\s+(\d+)\s+เดือน$/);
   if (!match) return null;
   const goal = budgetService.createGoal(user.id, match[1].trim(), parseAmount(match[2]), Number(match[3]));
-  return `ตั้งเป้า ${goal.name} ${formatMoney(goal.targetAmount)} บาท ภายใน ${goal.months} เดือน ต้องเก็บเดือนละประมาณ ${formatMoney(goal.monthlySaving)} บาท`;
+  return buildResultFlex('ตั้งเป้าแล้ว', [
+    ['เป้าหมาย', goal.name],
+    ['ยอดรวม', `${formatMoney(goal.targetAmount)} บาท`],
+    ['ระยะเวลา', `${goal.months} เดือน`],
+    ['ต้องเก็บเดือนละ', `${formatMoney(goal.monthlySaving)} บาท`]
+  ], '#7c3aed');
 }
 
 function flexMessage(altText, contents) {
@@ -412,6 +428,117 @@ function buildResultFlex(title, rows, color = '#16a34a') {
   });
 }
 
+function buildSavedFlex(tx, alerts = []) {
+  return buildResultFlex('บันทึกแล้ว', [
+    ['รายการ', tx.title],
+    ['ยอด', `${formatMoney(tx.amount)} บาท`],
+    ['หมวด', tx.category],
+    ['วันที่', tx.transactionDate],
+    ...alerts.map((alert) => ['แจ้งเตือน', alert])
+  ]);
+}
+
+function buildDeleteConfirmFlex(tx) {
+  return flexMessage('ยืนยันการลบรายการล่าสุด', {
+    type: 'bubble',
+    size: 'mega',
+    header: flexHeader('ยืนยันการลบ', 'กดยืนยันเมื่อต้องการลบรายการนี้', '#dc2626'),
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'md',
+      contents: [
+        flexText(tx.title || 'รายการล่าสุด', { weight: 'bold', size: 'xl', wrap: true }),
+        detailRow('ยอด', `${formatMoney(tx.amount)} บาท`, true),
+        detailRow('หมวด', tx.category || '-'),
+        detailRow('วันที่', tx.transactionDate || '-')
+      ]
+    },
+    footer: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'sm',
+      contents: [
+        {
+          type: 'button',
+          style: 'primary',
+          color: '#dc2626',
+          action: { type: 'postback', label: 'ยืนยันลบ', data: 'action=confirm', displayText: 'ยืนยัน' }
+        },
+        {
+          type: 'button',
+          style: 'secondary',
+          action: { type: 'postback', label: 'ยกเลิก', data: 'action=cancel', displayText: 'ยกเลิก' }
+        }
+      ]
+    }
+  });
+}
+
+function buildDailySummaryFlex(summary) {
+  const rows = summary.rows.slice(0, 5).map((row) => ({
+    type: 'box',
+    layout: 'baseline',
+    spacing: 'sm',
+    contents: [
+      flexText(row.type === 'income' ? '+' : '-', {
+        size: 'sm',
+        color: row.type === 'income' ? '#16a34a' : '#dc2626',
+        flex: 1,
+        weight: 'bold'
+      }),
+      flexText(row.title, { size: 'sm', color: '#111827', flex: 5, wrap: true }),
+      flexText(formatMoney(row.amount), { size: 'sm', color: '#374151', flex: 3, align: 'end' })
+    ]
+  }));
+
+  return flexMessage('สรุปวันนี้', {
+    type: 'bubble',
+    size: 'mega',
+    header: flexHeader(`สรุปวันนี้ ${summary.date}`, 'ภาพรวมรายรับรายจ่าย', '#2563eb'),
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'md',
+      contents: [
+        detailRow('รายรับ', `${formatMoney(summary.income)} บาท`, true),
+        detailRow('รายจ่าย', `${formatMoney(summary.expense)} บาท`, true),
+        detailRow('สุทธิ', `${formatMoney(summary.net)} บาท`, true),
+        {
+          type: 'separator',
+          margin: 'md'
+        },
+        flexText('รายการล่าสุด', { size: 'sm', weight: 'bold', color: '#374151', margin: 'md' }),
+        ...(rows.length ? rows : [flexText('ยังไม่มีรายการวันนี้', { size: 'sm', color: '#6b7280' })])
+      ]
+    }
+  });
+}
+
+function buildMonthlySummaryFlex(summary) {
+  const topCategory = summary.topCategory
+    ? `${summary.topCategory[0]} ${formatMoney(summary.topCategory[1])} บาท`
+    : 'ยังไม่มี';
+
+  return flexMessage('สรุปเดือนนี้', {
+    type: 'bubble',
+    size: 'mega',
+    header: flexHeader(`สรุปเดือน ${summary.month}`, 'ภาพรวมทั้งเดือน', '#7c3aed'),
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'md',
+      contents: [
+        detailRow('รายรับ', `${formatMoney(summary.income)} บาท`, true),
+        detailRow('รายจ่าย', `${formatMoney(summary.expense)} บาท`, true),
+        detailRow('คงเหลือ', `${formatMoney(summary.net)} บาท`, true),
+        detailRow('หมวดสูงสุด', topCategory),
+        detailRow('จำนวนรายการ', `${summary.rows.length} รายการ`)
+      ]
+    }
+  });
+}
+
 function buildErrorFlex(title, detail) {
   return flexMessage(title, {
     type: 'bubble',
@@ -471,6 +598,33 @@ function flexText(text, options = {}) {
     wrap: Boolean(options.wrap),
     ...options
   };
+}
+
+function buildHelpFlex() {
+  return flexMessage('วิธีใช้ LINE Expense Tracker Bot', {
+    type: 'bubble',
+    size: 'mega',
+    header: flexHeader('วิธีใช้', 'พิมพ์สั้น ๆ หรือส่งรูปสลิปได้เลย', '#0f766e'),
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'md',
+      contents: [
+        flexText('บันทึกรายจ่าย', { weight: 'bold', color: '#111827' }),
+        flexText('กาแฟ 45, จ่าย ข้าว 60, ซื้อของ 1200 หมวด ของใช้', { size: 'sm', color: '#4b5563', wrap: true }),
+        flexText('บันทึกรายรับ', { weight: 'bold', color: '#111827', margin: 'md' }),
+        flexText('รับ เงินเดือน 18000, ได้เงิน 1000', { size: 'sm', color: '#4b5563', wrap: true }),
+        flexText('รูปสลิป', { weight: 'bold', color: '#111827', margin: 'md' }),
+        flexText('ส่งรูป แล้วกดปุ่มยืนยันบนการ์ดหลังตรวจสอบ', { size: 'sm', color: '#4b5563', wrap: true }),
+        flexText('คำสั่งอื่น', { weight: 'bold', color: '#111827', margin: 'md' }),
+        flexText('สรุป, สรุปเดือนนี้, ลบล่าสุด, ตั้งงบ 8000, export เดือนนี้', {
+          size: 'sm',
+          color: '#4b5563',
+          wrap: true
+        })
+      ]
+    }
+  });
 }
 
 function formatPending(tx, heading = 'รอตรวจสอบ') {
