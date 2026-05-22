@@ -29,6 +29,33 @@ LINE_CHANNEL_SECRET=ใส่ Channel secret
 DATABASE_PATH=./data/app.db
 IMAGE_STORAGE_PATH=./uploads
 PORT=3000
+OCR_PROVIDER=google
+GOOGLE_VISION_API_KEY=ใส่ Google Vision API key
+```
+
+## Google Vision OCR สำหรับใช้งานส่วนตัว
+
+ค่าเริ่มต้นของโปรเจกต์ตั้งใจให้ใช้ `OCR_PROVIDER=google` เมื่อมี `GOOGLE_VISION_API_KEY` เพื่ออ่านสลิปให้แม่นกว่า Tesseract.js โดยยังคง Tesseract เป็น fallback ถ้าไม่ได้ตั้งค่า key หรือ Google Vision ตอบพลาด
+
+ขั้นตอนโดยย่อ:
+
+1. เปิด Google Cloud Console
+2. สร้าง Project หรือเลือก Project เดิม
+3. Enable API: Cloud Vision API
+4. สร้าง API key
+5. ใส่ค่าใน `.env` หรือ Render Environment Variables:
+
+```env
+OCR_PROVIDER=google
+GOOGLE_VISION_API_KEY=ใส่-key-ตรงนี้
+```
+
+เพื่อคุมค่าใช้จ่าย ให้ตั้ง Budget alert ใน Google Cloud ไว้ที่ประมาณ 100 บาท/เดือน และใช้บัญชีส่วนตัวไม่เกิน 1,000 รูป/เดือนตามที่วางแผนไว้
+
+ถ้าต้องการกลับไปใช้ฟรีล้วน ให้ตั้ง:
+
+```env
+OCR_PROVIDER=tesseract
 ```
 
 ## ตั้งค่า LINE Bot
