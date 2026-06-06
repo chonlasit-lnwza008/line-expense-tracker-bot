@@ -12,6 +12,7 @@ const exportService = require('../services/exportService');
 const { parseTextTransaction } = require('../parser/textParser');
 const { parseOcrText } = require('../parser/ocrParser');
 const { parseAmount, formatMoney } = require('../utils/moneyUtils');
+const { toDateOnly } = require('../utils/dateUtils');
 
 const router = express.Router();
 const hasLineCredentials = Boolean(lineConfig.channelAccessToken && lineConfig.channelSecret);
@@ -126,6 +127,19 @@ async function handleText(user, text) {
   }
   if (/^export\s*เดือนนี้$/i.test(trimmed)) return exportService.exportTransactions(user.id, 'month');
   if (/^export\s*ทั้งหมด$/i.test(trimmed)) return exportService.exportTransactions(user.id, 'all');
+
+  const recentMatch = trimmed.match(/^(รายการล่าสุด|ย้อนหลัง|ดูย้อนหลัง)(?:\s+(\d+)(?:\s*(วัน))?)?$/);
+  if (recentMatch) {
+    const amount = recentMatch[2] ? Number(recentMatch[2]) : 10;
+    if (recentMatch[3]) {
+      const start = new Date();
+      start.setDate(start.getDate() - Math.max(1, amount) + 1);
+      const rows = await transactionService.listTransactionsFromDate(user.id, toDateOnly(start));
+      return buildRecentTransactionsFlex(rows, rows.length || 30, `ย้อนหลัง ${amount} วัน`);
+    }
+    const rows = await transactionService.listRecentTransactions(user.id, amount);
+    return buildRecentTransactionsFlex(rows, amount, 'รายการล่าสุด');
+  }
 
   const budgetReply = await handleBudget(user, trimmed);
   if (budgetReply) return budgetReply;
@@ -559,6 +573,49 @@ function buildMonthlySummaryFlex(summary) {
   });
 }
 
+function buildRecentTransactionsFlex(rows, limit, title = 'รายการล่าสุด') {
+  const items = rows.slice(0, limit).map((row) => {
+    const isIncome = row.type === 'income';
+    return {
+      type: 'box',
+      layout: 'vertical',
+      paddingAll: '10px',
+      backgroundColor: '#f9fafb',
+      cornerRadius: '8px',
+      contents: [
+        {
+          type: 'box',
+          layout: 'baseline',
+          spacing: 'sm',
+          contents: [
+            flexText(row.title, { size: 'sm', weight: 'bold', color: '#111827', flex: 5, wrap: true }),
+            flexText(`${isIncome ? '+' : '-'}${formatMoney(row.amount)}`, {
+              size: 'sm',
+              weight: 'bold',
+              color: isIncome ? '#16a34a' : '#dc2626',
+              flex: 3,
+              align: 'end'
+            })
+          ]
+        },
+        flexText(`${row.transactionDate} · ${row.category}`, { size: 'xs', color: '#6b7280', margin: 'xs', wrap: true })
+      ]
+    };
+  });
+
+  return flexMessage(title, {
+    type: 'bubble',
+    size: 'mega',
+    header: flexHeader(title, `แสดงสูงสุด ${limit} รายการ`, '#2563eb'),
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'sm',
+      contents: items.length ? items : [flexText('ยังไม่มีรายการที่บันทึกไว้', { color: '#6b7280', wrap: true })]
+    }
+  });
+}
+
 function buildErrorFlex(title, detail) {
   return flexMessage(title, {
     type: 'bubble',
@@ -637,7 +694,7 @@ function buildHelpFlex() {
         flexText('รูปสลิป', { weight: 'bold', color: '#111827', margin: 'md' }),
         flexText('ส่งรูป แล้วกดปุ่มยืนยันบนการ์ดหลังตรวจสอบ', { size: 'sm', color: '#4b5563', wrap: true }),
         flexText('คำสั่งอื่น', { weight: 'bold', color: '#111827', margin: 'md' }),
-        flexText('สรุป, สรุปเดือนนี้, ลบล่าสุด, ตั้งงบ 8000, export เดือนนี้', {
+        flexText('สรุป, สรุปเดือนนี้, รายการล่าสุด, ย้อนหลัง 7 วัน, ลบล่าสุด, ตั้งงบ 8000, export เดือนนี้', {
           size: 'sm',
           color: '#4b5563',
           wrap: true
@@ -668,6 +725,7 @@ function helpText() {
     '- แก้ไข: แก้ล่าสุด 120, แก้หมวดล่าสุด อาหาร, แก้ชื่อรายการล่าสุด ข้าวเที่ยง',
     '- ลบ: ลบล่าสุด แล้วตอบ ยืนยัน',
     '- สรุป: สรุปวันนี้, สรุปเดือนนี้',
+    '- ดูย้อนหลัง: รายการล่าสุด, ย้อนหลัง 7 วัน',
     '- งบ: ตั้งงบ 8000, งบอาหาร 3000',
     '- เป้า: ตั้งเป้า iPad 18000 ใน 6 เดือน',
     '- Export: export เดือนนี้, export ทั้งหมด'

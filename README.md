@@ -32,6 +32,7 @@ DATABASE_SSL=true
 DATABASE_PATH=./data/app.db
 IMAGE_STORAGE_PATH=./uploads
 PORT=3000
+DASHBOARD_TOKEN=your-dashboard-password
 OCR_PROVIDER=google
 GOOGLE_VISION_API_KEY=ใส่ Google Vision API key
 SLIP_VERIFY_PROVIDER=ghostx
@@ -102,6 +103,16 @@ DATABASE_SSL=true
 ถ้าไม่ใส่ `DATABASE_URL` ระบบจะ fallback ไป SQLite ตาม `DATABASE_PATH` เหมือนเดิม เหมาะสำหรับ local dev เท่านั้น
 
 เมื่อเริ่มแอป ระบบจะ migrate ตารางให้อัตโนมัติจาก `src/database/schema.postgres.sql`
+
+## Dashboard
+
+Set `DASHBOARD_TOKEN` in Render Environment Variables, then open:
+
+```text
+https://your-render-url.onrender.com/dashboard?token=your-dashboard-password
+```
+
+The dashboard shows monthly income, expense, net balance, category chart, daily chart, and recent confirmed transactions from Supabase.
 
 ## Deploy ไป Google Cloud Run
 
@@ -195,6 +206,8 @@ https://xxxx.ngrok-free.app/webhook
 ตั้งเป้า iPad 18000 ใน 6 เดือน
 export เดือนนี้
 export ทั้งหมด
+รายการล่าสุด
+ย้อนหลัง 7 วัน
 help
 ```
 

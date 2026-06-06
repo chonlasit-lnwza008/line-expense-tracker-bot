@@ -56,6 +56,26 @@ async function getLatestPending(userId) {
   return getLatestTransaction(userId, 'pending');
 }
 
+async function listRecentTransactions(userId, limit = 10) {
+  return db.all(`
+    SELECT * FROM transactions
+    WHERE userId = $1 AND status = 'confirmed'
+    ORDER BY transactionDate DESC, createdAt DESC, id DESC
+    LIMIT $2
+  `, [userId, Math.max(1, Math.min(Number(limit) || 10, 30))]);
+}
+
+async function listTransactionsFromDate(userId, startDate, limit = 30) {
+  return db.all(`
+    SELECT * FROM transactions
+    WHERE userId = $1
+      AND status = 'confirmed'
+      AND transactionDate >= $2
+    ORDER BY transactionDate DESC, createdAt DESC, id DESC
+    LIMIT $3
+  `, [userId, startDate, Math.max(1, Math.min(Number(limit) || 30, 80))]);
+}
+
 async function confirmTransaction(userId, id) {
   await db.run(`
     UPDATE transactions
@@ -134,6 +154,8 @@ module.exports = {
   getTransaction,
   getLatestTransaction,
   getLatestPending,
+  listRecentTransactions,
+  listTransactionsFromDate,
   confirmTransaction,
   cancelTransaction,
   updateLatest,
