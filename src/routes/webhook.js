@@ -3,6 +3,8 @@ const { line, lineConfig } = require('../config/line');
 const lineService = require('../services/lineService');
 const storageService = require('../services/storageService');
 const ocrService = require('../services/ocrService');
+const qrService = require('../services/qrService');
+const slipVerificationService = require('../services/slipVerificationService');
 const transactionService = require('../services/transactionService');
 const summaryService = require('../services/summaryService');
 const budgetService = require('../services/budgetService');
@@ -225,6 +227,13 @@ function parsePendingAmountCandidates(pending) {
 async function handleImage(user, messageId) {
   const stream = await lineService.getMessageContent(messageId);
   const imagePath = await storageService.saveLineImageStream(stream, messageId);
+
+  const verifiedSlip = await verifySlipFromQr(imagePath);
+  if (verifiedSlip) {
+    const tx = transactionService.createTransaction(user.id, { ...verifiedSlip, imagePath }, 'pending');
+    return buildPendingFlex(tx, { heading: 'ตรวจสอบสลิปจาก QR' });
+  }
+
   const rawText = await ocrService.recognizeImage(imagePath);
 
   if (!rawText.trim()) {
@@ -251,6 +260,17 @@ async function handleImage(user, messageId) {
 
   const tx = transactionService.createTransaction(user.id, { ...parsed, imagePath }, 'pending');
   return buildPendingFlex(tx, { heading: 'ตรวจสอบก่อนบันทึก' });
+}
+
+async function verifySlipFromQr(imagePath) {
+  try {
+    const qrData = await qrService.extractQrData(imagePath);
+    if (!qrData) return null;
+    return await slipVerificationService.verifyQrData(qrData);
+  } catch (error) {
+    console.error('Slip QR verification failed, falling back to OCR:', error.message);
+    return null;
+  }
 }
 
 async function processImageAndPush(user, messageId) {

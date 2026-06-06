@@ -31,7 +31,33 @@ IMAGE_STORAGE_PATH=./uploads
 PORT=3000
 OCR_PROVIDER=google
 GOOGLE_VISION_API_KEY=ใส่ Google Vision API key
+SLIP_VERIFY_PROVIDER=ghostx
+GHOSTX_VERIFY_URL=https://externalauth.ghostxapi.xyz/qr/scan
 ```
+
+## Slip QR Verification
+
+สำหรับสลิปโอนเงินที่มี QR ตรวจสอบสลิป ระบบจะลองอ่าน QR จากรูปก่อน OCR:
+
+1. Decode QR จากรูปด้วย `sharp` + `jsqr`
+2. ส่ง `qrData` ไป `GHOSTX_VERIFY_URL`
+3. ถ้า verify สำเร็จ จะใช้ข้อมูลยอดเงิน วันที่ เลขอ้างอิง และบัญชีปลายทางจาก API
+4. ถ้าไม่เจอ QR หรือ API ใช้ไม่ได้ จะ fallback ไป Google Vision OCR แล้วค่อย Tesseract.js
+
+ค่า ENV:
+
+```env
+SLIP_VERIFY_PROVIDER=ghostx
+GHOSTX_VERIFY_URL=https://externalauth.ghostxapi.xyz/qr/scan
+```
+
+ถ้าต้องการปิดการส่ง QR ไปบริการภายนอก:
+
+```env
+SLIP_VERIFY_PROVIDER=off
+```
+
+หมายเหตุ: GhostX เป็นบริการ third-party ไม่ใช่บริการ official ของธนาคาร ข้อมูล QR จากสลิปจะถูกส่งออกไปตรวจสอบกับ endpoint ดังกล่าว ควรใช้เฉพาะเมื่อยอมรับเงื่อนไข privacy แล้ว
 
 ## Google Vision OCR สำหรับใช้งานส่วนตัว
 
