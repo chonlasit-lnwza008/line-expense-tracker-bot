@@ -37,10 +37,10 @@ router.post('/', lineMiddleware, async (req, res, next) => {
 async function handleEvent(event) {
   const lineUserId = event.source && event.source.userId;
   if (!lineUserId) return;
-  const user = transactionService.findOrCreateUser(lineUserId);
+  const user = await transactionService.findOrCreateUser(lineUserId);
 
   if (event.type === 'postback') {
-    const reply = handlePostback(user, event.postback && event.postback.data);
+    const reply = await handlePostback(user, event.postback && event.postback.data);
     return replyToLine(event.replyToken, reply);
   }
 
@@ -80,89 +80,89 @@ function pushToLine(to, reply) {
 
 async function handleText(user, text) {
   const trimmed = text.trim();
-  const pending = transactionService.getLatestPending(user.id);
+  const pending = await transactionService.getLatestPending(user.id);
   const isConfirm = /^(ยืนยัน|บันทึก|ตกลง|โอเค|ok|confirm|yes|ใช่)$/i.test(trimmed);
   const isCancel = /^(ยกเลิก|cancel|no|ไม่|ไม่เอา)$/i.test(trimmed);
 
   if (/^(help|วิธีใช้)$/i.test(trimmed)) return buildHelpFlex();
   if (isCancel && pending) {
-    transactionService.cancelTransaction(user.id, pending.id);
+    await transactionService.cancelTransaction(user.id, pending.id);
     return buildResultFlex('ยกเลิกแล้ว', [
       ['สถานะ', 'รายการนี้ไม่ถูกบันทึก']
     ], '#6b7280');
   }
   if (isConfirm && pending) {
-    const deleted = transactionService.confirmDeleteLatest(user.id);
+    const deleted = await transactionService.confirmDeleteLatest(user.id);
     if (deleted) {
       return buildResultFlex('ลบรายการแล้ว', [
         ['รายการ', deleted.title],
         ['ยอด', `${formatMoney(deleted.amount)} บาท`]
       ], '#dc2626');
     }
-    const confirmed = transactionService.confirmTransaction(user.id, pending.id);
-    const alerts = budgetService.getBudgetAlerts(user.id, confirmed.category);
+    const confirmed = await transactionService.confirmTransaction(user.id, pending.id);
+    const alerts = await budgetService.getBudgetAlerts(user.id, confirmed.category);
     return buildSavedFlex(confirmed, alerts);
   }
 
   if (/^ลบล่าสุด$/.test(trimmed)) {
-    const request = transactionService.requestDeleteLatest(user.id);
+    const request = await transactionService.requestDeleteLatest(user.id);
     if (!request) return buildErrorFlex('ยังไม่มีรายการให้ลบ', 'บันทึกรายการก่อน แล้วค่อยใช้คำสั่งลบล่าสุด');
     const targetId = Number(String(request.title).split(':')[1]);
-    const target = transactionService.getTransaction(targetId) || request;
+    const target = await transactionService.getTransaction(targetId) || request;
     return buildDeleteConfirmFlex(target);
   }
 
-  const editReply = handleEdit(user, trimmed, pending ? 'pending' : 'confirmed');
+  const editReply = await handleEdit(user, trimmed, pending ? 'pending' : 'confirmed');
   if (editReply) return editReply;
 
-  const candidateReply = handlePendingCandidateSelection(user, pending, trimmed);
+  const candidateReply = await handlePendingCandidateSelection(user, pending, trimmed);
   if (candidateReply) return candidateReply;
 
   if (/^(สรุป|สรุปยอด|สรุปวันนี้)$/.test(trimmed)) {
-    return buildDailySummaryFlex(summaryService.dailySummary(user.id));
+    return buildDailySummaryFlex(await summaryService.dailySummary(user.id));
   }
   if (/^สรุปเดือนนี้$/.test(trimmed)) {
-    return buildMonthlySummaryFlex(summaryService.monthlySummary(user.id));
+    return buildMonthlySummaryFlex(await summaryService.monthlySummary(user.id));
   }
   if (/^export\s*เดือนนี้$/i.test(trimmed)) return exportService.exportTransactions(user.id, 'month');
   if (/^export\s*ทั้งหมด$/i.test(trimmed)) return exportService.exportTransactions(user.id, 'all');
 
-  const budgetReply = handleBudget(user, trimmed);
+  const budgetReply = await handleBudget(user, trimmed);
   if (budgetReply) return budgetReply;
 
-  const goalReply = handleGoal(user, trimmed);
+  const goalReply = await handleGoal(user, trimmed);
   if (goalReply) return goalReply;
 
   if (pending && parseAmount(trimmed)) {
-    const updated = transactionService.updateLatest(user.id, { amount: parseAmount(trimmed) }, 'pending');
+    const updated = await transactionService.updateLatest(user.id, { amount: parseAmount(trimmed) }, 'pending');
     return buildPendingFlex(updated, { heading: 'แก้ยอดแล้ว ตรวจสอบอีกครั้ง' });
   }
 
   const parsed = parseTextTransaction(trimmed);
   if (!parsed.ok) return buildErrorFlex('ยังอ่านยอดเงินไม่ได้', 'ลองพิมพ์เช่น "กาแฟ 45" หรือส่งรูปบิล/สลิปได้เลย');
 
-  const duplicate = transactionService.findDuplicate(user.id, parsed);
+  const duplicate = await transactionService.findDuplicate(user.id, parsed);
   const status = duplicate ? 'pending' : 'confirmed';
-  const tx = transactionService.createTransaction(user.id, parsed, status);
+  const tx = await transactionService.createTransaction(user.id, parsed, status);
   if (duplicate) {
     return buildPendingFlex(tx, { heading: 'รายการนี้อาจซ้ำ' });
   }
 
-  const alerts = budgetService.getBudgetAlerts(user.id, tx.category);
+  const alerts = await budgetService.getBudgetAlerts(user.id, tx.category);
   return buildSavedFlex(tx, alerts);
 }
 
-function handlePostback(user, data = '') {
+async function handlePostback(user, data = '') {
   const params = new URLSearchParams(data);
   const action = params.get('action');
-  const pending = transactionService.getLatestPending(user.id);
+  const pending = await transactionService.getLatestPending(user.id);
 
   if (!pending) {
     return buildErrorFlex('ไม่มีรายการรอตรวจสอบ', 'ส่งสลิปใหม่ หรือพิมพ์รายการ เช่น "กาแฟ 45" ได้เลย');
   }
 
   if (action === 'confirm') {
-    const deleted = transactionService.confirmDeleteLatest(user.id);
+    const deleted = await transactionService.confirmDeleteLatest(user.id);
     if (deleted) {
       return buildResultFlex('ลบรายการแล้ว', [
         ['รายการ', deleted.title],
@@ -170,8 +170,8 @@ function handlePostback(user, data = '') {
       ], '#dc2626');
     }
 
-    const confirmed = transactionService.confirmTransaction(user.id, pending.id);
-    const alerts = budgetService.getBudgetAlerts(user.id, confirmed.category);
+    const confirmed = await transactionService.confirmTransaction(user.id, pending.id);
+    const alerts = await budgetService.getBudgetAlerts(user.id, confirmed.category);
     return buildResultFlex('บันทึกแล้ว', [
       ['รายการ', confirmed.title],
       ['ยอด', `${formatMoney(confirmed.amount)} บาท`],
@@ -182,7 +182,7 @@ function handlePostback(user, data = '') {
   }
 
   if (action === 'cancel') {
-    transactionService.cancelTransaction(user.id, pending.id);
+    await transactionService.cancelTransaction(user.id, pending.id);
     return buildResultFlex('ยกเลิกแล้ว', [
       ['สถานะ', 'รายการนี้ไม่ถูกบันทึก']
     ], '#6b7280');
@@ -193,14 +193,14 @@ function handlePostback(user, data = '') {
     const selected = candidates[Number(params.get('index')) - 1];
     if (!selected) return buildErrorFlex('เลือกยอดไม่ได้', 'ลองพิมพ์ยอดที่ถูกต้องเอง เช่น "80"');
 
-    const updated = transactionService.updateLatest(user.id, { amount: selected }, 'pending');
+    const updated = await transactionService.updateLatest(user.id, { amount: selected }, 'pending');
     return buildPendingFlex(updated, { heading: 'เลือกยอดแล้ว ตรวจสอบอีกครั้ง' });
   }
 
   return buildErrorFlex('คำสั่งไม่ถูกต้อง', 'ลองส่งรายการใหม่ หรือพิมพ์ help เพื่อดูคำสั่ง');
 }
 
-function handlePendingCandidateSelection(user, pending, text) {
+async function handlePendingCandidateSelection(user, pending, text) {
   if (!pending) return null;
   const candidates = parsePendingAmountCandidates(pending);
   if (!candidates.length) return null;
@@ -211,7 +211,7 @@ function handlePendingCandidateSelection(user, pending, text) {
   const selected = candidates[Number(match[1]) - 1];
   if (!selected) return `มีตัวเลือก 1-${candidates.length} เท่านั้นครับ หรือพิมพ์ยอดเงินที่ถูกต้องได้เลย`;
 
-  const updated = transactionService.updateLatest(user.id, { amount: selected }, 'pending');
+  const updated = await transactionService.updateLatest(user.id, { amount: selected }, 'pending');
   return formatPending(updated, `เลือกยอดข้อ ${match[1]} แล้ว ตรวจสอบอีกครั้ง แล้วตอบ "ยืนยัน" เพื่อบันทึก`);
 }
 
@@ -230,7 +230,7 @@ async function handleImage(user, messageId) {
 
   const verifiedSlip = await verifySlipFromQr(imagePath);
   if (verifiedSlip) {
-    const tx = transactionService.createTransaction(user.id, { ...verifiedSlip, imagePath }, 'pending');
+    const tx = await transactionService.createTransaction(user.id, { ...verifiedSlip, imagePath }, 'pending');
     return buildPendingFlex(tx, { heading: 'ตรวจสอบสลิปจาก QR' });
   }
 
@@ -246,7 +246,7 @@ async function handleImage(user, messageId) {
   }
 
   if (!parsed.amount && parsed.amountCandidates.length > 1) {
-    const tx = transactionService.createTransaction(user.id, {
+    const tx = await transactionService.createTransaction(user.id, {
       ...parsed,
       amount: parsed.amountCandidates[0].amount,
       note: `amount candidates: ${parsed.amountCandidates.map((item) => item.amount).join(', ')}`,
@@ -258,7 +258,7 @@ async function handleImage(user, messageId) {
     });
   }
 
-  const tx = transactionService.createTransaction(user.id, { ...parsed, imagePath }, 'pending');
+  const tx = await transactionService.createTransaction(user.id, { ...parsed, imagePath }, 'pending');
   return buildPendingFlex(tx, { heading: 'ตรวจสอบก่อนบันทึก' });
 }
 
@@ -278,32 +278,32 @@ async function processImageAndPush(user, messageId) {
   await pushToLine(user.lineUserId, reply);
 }
 
-function handleEdit(user, text, status) {
+async function handleEdit(user, text, status) {
   const amountMatch = text.match(/^แก้ล่าสุด\s+(\d[\d,]*(?:\.\d{1,2})?)$/);
   if (amountMatch) {
-    const tx = transactionService.updateLatest(user.id, { amount: parseAmount(amountMatch[1]) }, status);
+    const tx = await transactionService.updateLatest(user.id, { amount: parseAmount(amountMatch[1]) }, status);
     return tx ? `แก้ยอดแล้ว: ${tx.title} ${formatMoney(tx.amount)} บาท` : 'ยังไม่มีรายการให้แก้';
   }
 
   const categoryMatch = text.match(/^แก้หมวดล่าสุด\s+(.+)$/);
   if (categoryMatch) {
-    const tx = transactionService.updateLatest(user.id, { category: categoryMatch[1].trim() }, status);
+    const tx = await transactionService.updateLatest(user.id, { category: categoryMatch[1].trim() }, status);
     return tx ? `แก้หมวดแล้ว: ${tx.title} (${tx.category})` : 'ยังไม่มีรายการให้แก้';
   }
 
   const titleMatch = text.match(/^แก้ชื่อรายการล่าสุด\s+(.+)$/);
   if (titleMatch) {
-    const tx = transactionService.updateLatest(user.id, { title: titleMatch[1].trim() }, status);
+    const tx = await transactionService.updateLatest(user.id, { title: titleMatch[1].trim() }, status);
     return tx ? `แก้ชื่อแล้ว: ${tx.title}` : 'ยังไม่มีรายการให้แก้';
   }
 
   return null;
 }
 
-function handleBudget(user, text) {
+async function handleBudget(user, text) {
   const total = text.match(/^ตั้งงบ\s+(\d[\d,]*(?:\.\d{1,2})?)$/);
   if (total) {
-    const budget = budgetService.setBudget(user.id, 'ทั้งหมด', parseAmount(total[1]));
+    const budget = await budgetService.setBudget(user.id, 'ทั้งหมด', parseAmount(total[1]));
     return buildResultFlex('ตั้งงบแล้ว', [
       ['หมวด', budget.category],
       ['งบเดือนนี้', `${formatMoney(budget.amount)} บาท`]
@@ -312,7 +312,7 @@ function handleBudget(user, text) {
 
   const category = text.match(/^งบ(.+?)\s+(\d[\d,]*(?:\.\d{1,2})?)$/);
   if (category) {
-    const budget = budgetService.setBudget(user.id, category[1].trim(), parseAmount(category[2]));
+    const budget = await budgetService.setBudget(user.id, category[1].trim(), parseAmount(category[2]));
     return buildResultFlex('ตั้งงบแล้ว', [
       ['หมวด', budget.category],
       ['งบเดือนนี้', `${formatMoney(budget.amount)} บาท`]
@@ -322,10 +322,10 @@ function handleBudget(user, text) {
   return null;
 }
 
-function handleGoal(user, text) {
+async function handleGoal(user, text) {
   const match = text.match(/^ตั้งเป้า\s+(.+?)\s+(\d[\d,]*(?:\.\d{1,2})?)\s+ใน\s+(\d+)\s+เดือน$/);
   if (!match) return null;
-  const goal = budgetService.createGoal(user.id, match[1].trim(), parseAmount(match[2]), Number(match[3]));
+  const goal = await budgetService.createGoal(user.id, match[1].trim(), parseAmount(match[2]), Number(match[3]));
   return buildResultFlex('ตั้งเป้าแล้ว', [
     ['เป้าหมาย', goal.name],
     ['ยอดรวม', `${formatMoney(goal.targetAmount)} บาท`],

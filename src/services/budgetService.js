@@ -2,54 +2,62 @@ const db = require('../config/database');
 const { currentMonth, monthRange } = require('../utils/dateUtils');
 const { formatMoney } = require('../utils/moneyUtils');
 
-function setBudget(userId, category, amount, month = currentMonth()) {
-  db.prepare(`
+async function setBudget(userId, category, amount, month = currentMonth()) {
+  await db.run(`
     INSERT INTO budgets (userId, category, amount, month)
-    VALUES (?, ?, ?, ?)
+    VALUES ($1, $2, $3, $4)
     ON CONFLICT(userId, category, month)
     DO UPDATE SET amount = excluded.amount
-  `).run(userId, category, amount, month);
+  `, [userId, category, amount, month]);
   return { category, amount, month };
 }
 
-function getBudgetAlerts(userId, category, month = currentMonth()) {
+async function getBudgetAlerts(userId, category, month = currentMonth()) {
   const range = monthRange(month);
-  const budgets = db.prepare(`
+  const budgets = await db.all(`
     SELECT * FROM budgets
-    WHERE userId = ? AND month = ? AND category IN (?, 'ทั้งหมด')
-  `).all(userId, month, category);
+    WHERE userId = $1 AND month = $2 AND category IN ($3, 'ทั้งหมด')
+  `, [userId, month, category]);
 
-  return budgets.map((budget) => {
-    const categoryFilter = budget.category === 'ทั้งหมด' ? '' : 'AND category = @category';
-    const spent = db.prepare(`
+  const alerts = [];
+  for (const budget of budgets) {
+    const categoryFilter = budget.category === 'ทั้งหมด' ? '' : 'AND category = $5';
+    const params = [userId, range.start, range.endExclusive, 'confirmed'];
+    if (budget.category !== 'ทั้งหมด') params.push(budget.category);
+
+    const row = await db.get(`
       SELECT COALESCE(SUM(amount), 0) AS total
       FROM transactions
-      WHERE userId = @userId
-        AND status = 'confirmed'
+      WHERE userId = $1
+        AND transactionDate >= $2
+        AND transactionDate < $3
+        AND status = $4
         AND type = 'expense'
-        AND transactionDate >= @start
-        AND transactionDate < @endExclusive
         ${categoryFilter}
-    `).get({ userId, category: budget.category, start: range.start, endExclusive: range.endExclusive }).total;
+    `, params);
 
-    const percent = budget.amount ? spent / budget.amount : 0;
-    if (percent >= 1) return `งบ${budget.category}ใช้ครบ 100% แล้ว (${formatMoney(spent)}/${formatMoney(budget.amount)} บาท)`;
-    if (percent >= 0.8) return `งบ${budget.category}ใช้ถึง 80% แล้ว (${formatMoney(spent)}/${formatMoney(budget.amount)} บาท)`;
-    return null;
-  }).filter(Boolean);
+    const spent = Number(row?.total || 0);
+    const amount = Number(budget.amount || 0);
+    const percent = amount ? spent / amount : 0;
+    if (percent >= 1) alerts.push(`งบ${budget.category}ใช้ครบ 100% แล้ว (${formatMoney(spent)}/${formatMoney(amount)} บาท)`);
+    else if (percent >= 0.8) alerts.push(`งบ${budget.category}ใช้ถึง 80% แล้ว (${formatMoney(spent)}/${formatMoney(amount)} บาท)`);
+  }
+
+  return alerts;
 }
 
-function createGoal(userId, name, targetAmount, months) {
+async function createGoal(userId, name, targetAmount, months) {
   const deadline = new Date();
   deadline.setMonth(deadline.getMonth() + months);
   const deadlineText = deadline.toISOString().slice(0, 10);
-  const result = db.prepare(`
+  const inserted = await db.get(`
     INSERT INTO goals (userId, name, targetAmount, deadline)
-    VALUES (?, ?, ?, ?)
-  `).run(userId, name, targetAmount, deadlineText);
+    VALUES ($1, $2, $3, $4)
+    RETURNING id
+  `, [userId, name, targetAmount, deadlineText]);
 
   return {
-    id: result.lastInsertRowid,
+    id: inserted?.id,
     name,
     targetAmount,
     months,

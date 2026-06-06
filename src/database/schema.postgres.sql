@@ -1,0 +1,46 @@
+CREATE TABLE IF NOT EXISTS users (
+  id BIGSERIAL PRIMARY KEY,
+  lineUserId TEXT NOT NULL UNIQUE,
+  displayName TEXT,
+  createdAt TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS transactions (
+  id BIGSERIAL PRIMARY KEY,
+  userId BIGINT NOT NULL REFERENCES users(id),
+  type TEXT NOT NULL CHECK (type IN ('income', 'expense', 'transfer')),
+  amount NUMERIC NOT NULL,
+  title TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'อื่นๆ',
+  note TEXT,
+  transactionDate DATE NOT NULL,
+  source TEXT NOT NULL CHECK (source IN ('text', 'receipt_image', 'screenshot', 'slip')),
+  imagePath TEXT,
+  ocrText TEXT,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'confirmed', 'cancelled')),
+  createdAt TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updatedAt TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_transactions_user_date ON transactions(userId, transactionDate);
+CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(userId, status);
+
+CREATE TABLE IF NOT EXISTS budgets (
+  id BIGSERIAL PRIMARY KEY,
+  userId BIGINT NOT NULL REFERENCES users(id),
+  category TEXT NOT NULL,
+  amount NUMERIC NOT NULL,
+  month TEXT NOT NULL,
+  createdAt TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(userId, category, month)
+);
+
+CREATE TABLE IF NOT EXISTS goals (
+  id BIGSERIAL PRIMARY KEY,
+  userId BIGINT NOT NULL REFERENCES users(id),
+  name TEXT NOT NULL,
+  targetAmount NUMERIC NOT NULL,
+  currentAmount NUMERIC NOT NULL DEFAULT 0,
+  deadline DATE NOT NULL,
+  createdAt TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

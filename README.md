@@ -26,6 +26,9 @@ npm start
 ```env
 LINE_CHANNEL_ACCESS_TOKEN=ใส่ Channel access token
 LINE_CHANNEL_SECRET=ใส่ Channel secret
+DB_CLIENT=postgres
+DATABASE_URL=ใส่ Supabase Postgres connection string
+DATABASE_SSL=true
 DATABASE_PATH=./data/app.db
 IMAGE_STORAGE_PATH=./uploads
 PORT=3000
@@ -82,6 +85,51 @@ GOOGLE_VISION_API_KEY=ใส่-key-ตรงนี้
 
 ```env
 OCR_PROVIDER=tesseract
+```
+
+## Supabase Postgres
+
+สำหรับใช้งานจริงระยะยาว แนะนำใช้ Supabase Postgres แทน SQLite local เพื่อไม่ให้ข้อมูลหายเมื่อ server redeploy หรือย้าย instance
+
+ตั้งค่า ENV:
+
+```env
+DB_CLIENT=postgres
+DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/postgres
+DATABASE_SSL=true
+```
+
+ถ้าไม่ใส่ `DATABASE_URL` ระบบจะ fallback ไป SQLite ตาม `DATABASE_PATH` เหมือนเดิม เหมาะสำหรับ local dev เท่านั้น
+
+เมื่อเริ่มแอป ระบบจะ migrate ตารางให้อัตโนมัติจาก `src/database/schema.postgres.sql`
+
+## Deploy ไป Google Cloud Run
+
+Cloud Run เหมาะกับ LINE webhook เพราะไม่ต้องดูแล server เอง และใช้ส่วนตัวมีโอกาสอยู่ใน free tier
+
+ตัวอย่าง deploy:
+
+```bash
+gcloud run deploy line-expense-tracker-bot \
+  --source . \
+  --region asia-southeast1 \
+  --allow-unauthenticated \
+  --set-env-vars DB_CLIENT=postgres,DATABASE_SSL=true,OCR_PROVIDER=google,SLIP_VERIFY_PROVIDER=ghostx,GHOSTX_VERIFY_URL=https://externalauth.ghostxapi.xyz/qr/scan
+```
+
+จากนั้นใส่ secret ที่ไม่ควรอยู่ใน command history ผ่าน Console หรือ Secret Manager:
+
+```env
+LINE_CHANNEL_ACCESS_TOKEN=
+LINE_CHANNEL_SECRET=
+DATABASE_URL=
+GOOGLE_VISION_API_KEY=
+```
+
+หลัง deploy ให้เอา URL ของ Cloud Run ไปตั้งใน LINE webhook เป็น:
+
+```text
+https://YOUR-CLOUD-RUN-URL/webhook
 ```
 
 ## ตั้งค่า LINE Bot

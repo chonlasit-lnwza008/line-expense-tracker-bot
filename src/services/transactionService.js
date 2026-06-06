@@ -1,23 +1,27 @@
 const db = require('../config/database');
 const { toDateOnly } = require('../utils/dateUtils');
 
-function findOrCreateUser(lineUserId, displayName = null) {
-  const found = db.prepare('SELECT * FROM users WHERE lineUserId = ?').get(lineUserId);
+async function findOrCreateUser(lineUserId, displayName = null) {
+  const found = await db.get('SELECT * FROM users WHERE lineUserId = $1', [lineUserId]);
   if (found) return found;
 
-  const result = db.prepare('INSERT INTO users (lineUserId, displayName) VALUES (?, ?)').run(lineUserId, displayName);
-  return db.prepare('SELECT * FROM users WHERE id = ?').get(result.lastInsertRowid);
+  const inserted = await db.get(
+    'INSERT INTO users (lineUserId, displayName) VALUES ($1, $2) RETURNING *',
+    [lineUserId, displayName]
+  );
+  if (inserted) return inserted;
+
+  return db.get('SELECT * FROM users WHERE lineUserId = $1', [lineUserId]);
 }
 
-function createTransaction(userId, data, status = 'confirmed') {
-  const stmt = db.prepare(`
+async function createTransaction(userId, data, status = 'confirmed') {
+  const inserted = await db.get(`
     INSERT INTO transactions (
       userId, type, amount, title, category, note, transactionDate, source,
       imagePath, ocrText, status, createdAt, updatedAt
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-  `);
-
-  const result = stmt.run(
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    RETURNING *
+  `, [
     userId,
     data.type,
     data.amount,
@@ -29,66 +33,67 @@ function createTransaction(userId, data, status = 'confirmed') {
     data.imagePath || null,
     data.rawText || data.ocrText || null,
     status
-  );
+  ]);
 
-  return getTransaction(result.lastInsertRowid);
+  if (inserted) return inserted;
+  return getLatestTransaction(userId, status);
 }
 
-function getTransaction(id) {
-  return db.prepare('SELECT * FROM transactions WHERE id = ?').get(id);
+async function getTransaction(id) {
+  return db.get('SELECT * FROM transactions WHERE id = $1', [id]);
 }
 
-function getLatestTransaction(userId, status = 'confirmed') {
-  return db.prepare(`
+async function getLatestTransaction(userId, status = 'confirmed') {
+  return db.get(`
     SELECT * FROM transactions
-    WHERE userId = ? AND status = ?
-    ORDER BY datetime(createdAt) DESC, id DESC
+    WHERE userId = $1 AND status = $2
+    ORDER BY createdAt DESC, id DESC
     LIMIT 1
-  `).get(userId, status);
+  `, [userId, status]);
 }
 
-function getLatestPending(userId) {
+async function getLatestPending(userId) {
   return getLatestTransaction(userId, 'pending');
 }
 
-function confirmTransaction(userId, id) {
-  db.prepare(`
+async function confirmTransaction(userId, id) {
+  await db.run(`
     UPDATE transactions
     SET status = 'confirmed', updatedAt = CURRENT_TIMESTAMP
-    WHERE id = ? AND userId = ? AND status = 'pending'
-  `).run(id, userId);
+    WHERE id = $1 AND userId = $2 AND status = 'pending'
+  `, [id, userId]);
   return getTransaction(id);
 }
 
-function cancelTransaction(userId, id) {
-  db.prepare(`
+async function cancelTransaction(userId, id) {
+  await db.run(`
     UPDATE transactions
     SET status = 'cancelled', updatedAt = CURRENT_TIMESTAMP
-    WHERE id = ? AND userId = ? AND status = 'pending'
-  `).run(id, userId);
+    WHERE id = $1 AND userId = $2 AND status = 'pending'
+  `, [id, userId]);
   return getTransaction(id);
 }
 
-function updateLatest(userId, patch, status = 'confirmed') {
-  const latest = getLatestTransaction(userId, status);
+async function updateLatest(userId, patch, status = 'confirmed') {
+  const latest = await getLatestTransaction(userId, status);
   if (!latest) return null;
 
   const allowed = ['amount', 'category', 'title', 'note', 'transactionDate'];
   const entries = Object.entries(patch).filter(([key]) => allowed.includes(key));
   if (!entries.length) return latest;
 
-  const setSql = entries.map(([key]) => `${key} = ?`).join(', ');
-  db.prepare(`
+  const setSql = entries.map(([key], index) => `${key} = $${index + 1}`).join(', ');
+  await db.run(`
     UPDATE transactions
     SET ${setSql}, updatedAt = CURRENT_TIMESTAMP
-    WHERE id = ? AND userId = ?
-  `).run(...entries.map((entry) => entry[1]), latest.id, userId);
+    WHERE id = $${entries.length + 1} AND userId = $${entries.length + 2}
+  `, [...entries.map((entry) => entry[1]), latest.id, userId]);
 
   return getTransaction(latest.id);
 }
 
-function requestDeleteLatest(userId) {
-  const latest = getLatestTransaction(userId, 'confirmed');
+async function requestDeleteLatest(userId) {
+  const latest = await getLatestTransaction(userId, 'confirmed');
   if (!latest) return null;
   return createTransaction(userId, {
     type: latest.type,
@@ -101,26 +106,26 @@ function requestDeleteLatest(userId) {
   }, 'pending');
 }
 
-function confirmDeleteLatest(userId) {
-  const pending = getLatestPending(userId);
+async function confirmDeleteLatest(userId) {
+  const pending = await getLatestPending(userId);
   if (!pending || !pending.title.startsWith('DELETE_REQUEST:')) return null;
   const id = Number(pending.title.split(':')[1]);
-  db.prepare('UPDATE transactions SET status = ? WHERE id = ? AND userId = ?').run('cancelled', pending.id, userId);
-  db.prepare('UPDATE transactions SET status = ? WHERE id = ? AND userId = ?').run('cancelled', id, userId);
+  await db.run('UPDATE transactions SET status = $1 WHERE id = $2 AND userId = $3', ['cancelled', pending.id, userId]);
+  await db.run('UPDATE transactions SET status = $1 WHERE id = $2 AND userId = $3', ['cancelled', id, userId]);
   return getTransaction(id);
 }
 
-function findDuplicate(userId, data) {
-  return db.prepare(`
+async function findDuplicate(userId, data) {
+  return db.get(`
     SELECT * FROM transactions
-    WHERE userId = ?
+    WHERE userId = $1
       AND status = 'confirmed'
-      AND transactionDate = ?
-      AND amount = ?
-      AND lower(title) LIKE ?
+      AND transactionDate = $2
+      AND amount = $3
+      AND lower(title) LIKE $4
     ORDER BY id DESC
     LIMIT 1
-  `).get(userId, data.date || toDateOnly(), data.amount, `%${String(data.title || '').toLowerCase().slice(0, 8)}%`);
+  `, [userId, data.date || toDateOnly(), data.amount, `%${String(data.title || '').toLowerCase().slice(0, 8)}%`]);
 }
 
 module.exports = {

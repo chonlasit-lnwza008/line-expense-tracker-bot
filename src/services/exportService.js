@@ -1,5 +1,9 @@
 const db = require('../config/database');
-const { currentMonth, monthRange } = require('../utils/dateUtils');
+const { currentMonth, monthRange, toDateOnly } = require('../utils/dateUtils');
+
+function normalizeDate(value) {
+  return value instanceof Date ? toDateOnly(value) : value;
+}
 
 function csvEscape(value) {
   const text = value === null || value === undefined ? '' : String(value);
@@ -11,7 +15,7 @@ function rowsToCsv(rows) {
   const lines = [headers.join(',')];
   for (const row of rows) {
     lines.push([
-      row.transactionDate,
+      normalizeDate(row.transactionDate),
       row.type,
       row.title,
       row.category,
@@ -23,22 +27,22 @@ function rowsToCsv(rows) {
   return lines.join('\n');
 }
 
-function exportTransactions(userId, scope = 'month') {
+async function exportTransactions(userId, scope = 'month') {
   let rows;
   if (scope === 'all') {
-    rows = db.prepare(`
+    rows = await db.all(`
       SELECT * FROM transactions
-      WHERE userId = ? AND status = 'confirmed'
+      WHERE userId = $1 AND status = 'confirmed'
       ORDER BY transactionDate ASC, id ASC
-    `).all(userId);
+    `, [userId]);
   } else {
     const range = monthRange(currentMonth());
-    rows = db.prepare(`
+    rows = await db.all(`
       SELECT * FROM transactions
-      WHERE userId = ? AND status = 'confirmed'
-        AND transactionDate >= ? AND transactionDate < ?
+      WHERE userId = $1 AND status = 'confirmed'
+        AND transactionDate >= $2 AND transactionDate < $3
       ORDER BY transactionDate ASC, id ASC
-    `).all(userId, range.start, range.endExclusive);
+    `, [userId, range.start, range.endExclusive]);
   }
   return rowsToCsv(rows);
 }
