@@ -33,6 +33,8 @@ DATABASE_PATH=./data/app.db
 IMAGE_STORAGE_PATH=./uploads
 PORT=3000
 DASHBOARD_TOKEN=your-dashboard-password
+DASHBOARD_URL=https://your-render-url.onrender.com/dashboard?token=your-dashboard-password
+RICH_MENU_NAME=LINE Expense Tracker Menu
 OCR_PROVIDER=google
 GOOGLE_VISION_API_KEY=ใส่ Google Vision API key
 SLIP_VERIFY_PROVIDER=ghostx
@@ -113,6 +115,23 @@ https://your-render-url.onrender.com/dashboard?token=your-dashboard-password
 ```
 
 The dashboard shows monthly income, expense, net balance, category chart, daily chart, and recent confirmed transactions from Supabase.
+
+## LINE Rich Menu
+
+ตั้งค่า `LINE_CHANNEL_ACCESS_TOKEN` และถ้าต้องการปุ่ม Dashboard ให้ตั้ง `DASHBOARD_URL` ก่อน จากนั้นรัน:
+
+```bash
+npm run richmenu:setup
+```
+
+สคริปต์จะสร้าง Rich Menu 6 ปุ่มและตั้งเป็น default ให้ผู้ใช้ทุกคน:
+
+- สรุปวันนี้
+- สรุปเดือนนี้
+- รายการล่าสุด
+- ย้อนหลัง 7 วัน
+- Dashboard
+- วิธีใช้
 
 ## Deploy ไป Google Cloud Run
 

@@ -86,6 +86,7 @@ async function handleText(user, text) {
   const isCancel = /^(ยกเลิก|cancel|no|ไม่|ไม่เอา)$/i.test(trimmed);
 
   if (/^(help|วิธีใช้)$/i.test(trimmed)) return buildHelpFlex();
+  if (/^(dashboard|แดชบอร์ด)$/i.test(trimmed)) return buildDashboardLinkFlex();
   if (isCancel && pending) {
     await transactionService.cancelTransaction(user.id, pending.id);
     return buildResultFlex('ยกเลิกแล้ว', [
@@ -699,6 +700,46 @@ function buildHelpFlex() {
           color: '#4b5563',
           wrap: true
         })
+      ]
+    }
+  });
+}
+
+function buildDashboardLinkFlex() {
+  const dashboardUrl = process.env.DASHBOARD_URL;
+  if (!dashboardUrl) {
+    return buildErrorFlex('ยังไม่ได้ตั้งค่า Dashboard URL', 'ตั้งค่า DASHBOARD_URL ใน Render เช่น https://your-render-url.onrender.com/dashboard?token=รหัสของคุณ แล้ว deploy ใหม่');
+  }
+
+  return flexMessage('Dashboard', {
+    type: 'bubble',
+    size: 'mega',
+    header: flexHeader('Dashboard', 'ดูกราฟรายรับรายจ่ายในเว็บ', '#2563eb'),
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'md',
+      contents: [
+        flexText('เปิดหน้า Dashboard เพื่อดูยอดรายเดือน กราฟหมวดหมู่ และรายการล่าสุด', {
+          wrap: true,
+          color: '#4b5563'
+        })
+      ]
+    },
+    footer: {
+      type: 'box',
+      layout: 'vertical',
+      contents: [
+        {
+          type: 'button',
+          style: 'primary',
+          color: '#2563eb',
+          action: {
+            type: 'uri',
+            label: 'เปิด Dashboard',
+            uri: dashboardUrl
+          }
+        }
       ]
     }
   });

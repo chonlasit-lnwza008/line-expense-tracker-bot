@@ -12,6 +12,7 @@
     "tunnel:cloudflare": "cloudflared tunnel --url http://localhost:3000",
     "simulate": "node --no-warnings src/dev/simulateMessage.js",
     "migrate": "node --no-warnings src/database/migrations.js",
+    "richmenu:setup": "node --no-warnings src/scripts/setupRichMenu.js",
     "test": "node --test"
   },
   "dependencies": {
