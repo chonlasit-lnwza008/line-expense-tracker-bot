@@ -108,17 +108,14 @@ async function handleText(user, text) {
   }
 
   if (/^ลบล่าสุด$/.test(trimmed)) {
-    const request = await transactionService.requestDeleteLatest(user.id);
-    if (!request) return buildErrorFlex('ยังไม่มีรายการให้ลบ', 'บันทึกรายการก่อน แล้วค่อยใช้คำสั่งลบล่าสุด');
-    const targetId = Number(String(request.title).split(':')[1]);
-    const target = await transactionService.getTransaction(targetId) || request;
+    const target = await transactionService.getLatestTransaction(user.id, 'confirmed');
+    if (!target) return buildErrorFlex('ยังไม่มีรายการให้ลบ', 'บันทึกรายการก่อน แล้วค่อยใช้คำสั่งลบล่าสุด');
     return buildDeleteConfirmFlex(target);
   }
 
   if (/^(แก้\/ลบล่าสุด|จัดการล่าสุด|แก้รายการล่าสุด)$/.test(trimmed)) {
-    const latest = await transactionService.getLatestTransaction(user.id, 'confirmed');
-    if (!latest) return buildErrorFlex('ยังไม่มีรายการให้จัดการ', 'บันทึกรายการก่อน แล้วค่อยใช้เมนูแก้/ลบ');
-    return buildManageLatestFlex(latest);
+    const rows = await transactionService.listTransactionsByDate(user.id, toDateOnly());
+    return buildManageTodayFlex(rows);
   }
 
   const editReply = await handleEdit(user, trimmed, pending ? 'pending' : 'confirmed');
@@ -180,19 +177,82 @@ async function handleText(user, text) {
 async function handlePostback(user, data = '') {
   const params = new URLSearchParams(data);
   const action = params.get('action');
-  const pending = await transactionService.getLatestPending(user.id);
+  const txId = Number(params.get('id'));
+  const target = txId ? await transactionService.getUserTransaction(user.id, txId) : null;
+  const pending = target && target.status === 'pending'
+    ? target
+    : await transactionService.getLatestPending(user.id);
+
+  if (txId && !target && ['confirm', 'cancel', 'select_amount', 'manage', 'delete_transaction', 'cancel_delete'].includes(action)) {
+    return buildErrorFlex('ไม่พบรายการนี้แล้ว', 'รายการอาจถูกบันทึก ลบ หรือยกเลิกไปแล้ว ลองกดเมนูใหม่อีกครั้ง');
+  }
+
+  if (action === 'select_amount' && txId && (!target || target.status !== 'pending')) {
+    return buildResultFlex('รายการนี้ปิดไปแล้ว', [
+      ['สถานะ', target && target.status === 'confirmed' ? 'บันทึกแล้ว' : 'ยกเลิกแล้ว'],
+      ['หมายเหตุ', 'ไม่แก้ยอดซ้ำจากการ์ดเก่า']
+    ], target && target.status === 'confirmed' ? '#16a34a' : '#6b7280');
+  }
+
+  if (action === 'manage') {
+    if (!target || target.status !== 'confirmed') {
+      return buildErrorFlex('รายการนี้จัดการไม่ได้แล้ว', 'รายการอาจถูกลบหรือถูกเปลี่ยนสถานะไปแล้ว ลองกดเมนูแก้/ลบใหม่อีกครั้ง');
+    }
+    return buildManageTransactionFlex(target);
+  }
+
+  if (action === 'delete_transaction') {
+    if (!target) return buildErrorFlex('ไม่พบรายการนี้', 'รายการนี้อาจถูกลบไปแล้ว');
+    if (target.status === 'cancelled') {
+      return buildResultFlex('รายการนี้ถูกลบไปแล้ว', [
+        ['รายการ', target.title],
+        ['สถานะ', 'ไม่ต้องกดซ้ำ']
+      ], '#6b7280');
+    }
+    if (target.status !== 'confirmed') {
+      return buildErrorFlex('ยังลบรายการนี้ไม่ได้', 'รายการนี้ยังไม่ใช่รายการที่บันทึกแล้ว');
+    }
+    const deleted = await transactionService.cancelConfirmedTransaction(user.id, target.id);
+    return buildResultFlex('ลบรายการแล้ว', [
+      ['รายการ', deleted.title],
+      ['ยอด', `${formatMoney(deleted.amount)} บาท`]
+    ], '#dc2626');
+  }
+
+  if (action === 'cancel_delete') {
+    return buildResultFlex('ยกเลิกการลบแล้ว', [
+      ['สถานะ', 'รายการนี้ยังอยู่เหมือนเดิม']
+    ], '#6b7280');
+  }
+
+  if ((action === 'confirm' || action === 'cancel') && target && target.status === 'confirmed') {
+    return buildResultFlex('รายการนี้บันทึกแล้ว', [
+      ['รายการ', target.title],
+      ['ยอด', `${formatMoney(target.amount)} บาท`],
+      ['สถานะ', 'กดไปแล้ว ไม่บันทึกซ้ำ']
+    ], '#16a34a');
+  }
+
+  if ((action === 'confirm' || action === 'cancel') && target && target.status === 'cancelled') {
+    return buildResultFlex('รายการนี้ถูกยกเลิกแล้ว', [
+      ['รายการ', target.title],
+      ['สถานะ', 'ไม่ต้องกดซ้ำ']
+    ], '#6b7280');
+  }
 
   if (!pending) {
     return buildErrorFlex('ไม่มีรายการรอตรวจสอบ', 'ส่งสลิปใหม่ หรือพิมพ์รายการ เช่น "กาแฟ 45" ได้เลย');
   }
 
   if (action === 'confirm') {
-    const deleted = await transactionService.confirmDeleteLatest(user.id);
-    if (deleted) {
-      return buildResultFlex('ลบรายการแล้ว', [
-        ['รายการ', deleted.title],
-        ['ยอด', `${formatMoney(deleted.amount)} บาท`]
-      ], '#dc2626');
+    if (String(pending.title || '').startsWith('DELETE_REQUEST:')) {
+      const deleted = await transactionService.confirmDeleteLatest(user.id);
+      if (deleted) {
+        return buildResultFlex('ลบรายการแล้ว', [
+          ['รายการ', deleted.title],
+          ['ยอด', `${formatMoney(deleted.amount)} บาท`]
+        ], '#dc2626');
+      }
     }
 
     const confirmed = await transactionService.confirmTransaction(user.id, pending.id);
@@ -218,7 +278,7 @@ async function handlePostback(user, data = '') {
     const selected = candidates[Number(params.get('index')) - 1];
     if (!selected) return buildErrorFlex('เลือกยอดไม่ได้', 'ลองพิมพ์ยอดที่ถูกต้องเอง เช่น "80"');
 
-    const updated = await transactionService.updateLatest(user.id, { amount: selected }, 'pending');
+    const updated = await transactionService.updatePendingTransaction(user.id, pending.id, { amount: selected });
     return buildPendingFlex(updated, { heading: 'เลือกยอดแล้ว ตรวจสอบอีกครั้ง' });
   }
 
@@ -236,7 +296,7 @@ async function handlePendingCandidateSelection(user, pending, text) {
   const selected = candidates[Number(match[1]) - 1];
   if (!selected) return `มีตัวเลือก 1-${candidates.length} เท่านั้นครับ หรือพิมพ์ยอดเงินที่ถูกต้องได้เลย`;
 
-  const updated = await transactionService.updateLatest(user.id, { amount: selected }, 'pending');
+  const updated = await transactionService.updatePendingTransaction(user.id, pending.id, { amount: selected });
   return formatPending(updated, `เลือกยอดข้อ ${match[1]} แล้ว ตรวจสอบอีกครั้ง แล้วตอบ "ยืนยัน" เพื่อบันทึก`);
 }
 
@@ -304,6 +364,49 @@ async function processImageAndPush(user, messageId) {
 }
 
 async function handleEdit(user, text, status) {
+  const idAmountMatch = text.match(/^แก้ยอด\s+(\d+)\s+(\d[\d,]*(?:\.\d{1,2})?)$/);
+  if (idAmountMatch) {
+    const tx = await transactionService.updateTransaction(user.id, Number(idAmountMatch[1]), { amount: parseAmount(idAmountMatch[2]) });
+    return tx ? buildResultFlex('แก้ยอดแล้ว', [
+      ['รายการ', tx.title],
+      ['ยอด', `${formatMoney(tx.amount)} บาท`],
+      ['หมวด', tx.category]
+    ], '#2563eb') : buildErrorFlex('แก้รายการนี้ไม่ได้', 'รายการอาจถูกลบไปแล้ว หรือยังไม่ใช่รายการที่บันทึกแล้ว');
+  }
+
+  const idCategoryMatch = text.match(/^แก้หมวด\s+(\d+)\s+(.+)$/);
+  if (idCategoryMatch) {
+    const tx = await transactionService.updateTransaction(user.id, Number(idCategoryMatch[1]), { category: idCategoryMatch[2].trim() });
+    return tx ? buildResultFlex('แก้หมวดแล้ว', [
+      ['รายการ', tx.title],
+      ['ยอด', `${formatMoney(tx.amount)} บาท`],
+      ['หมวด', tx.category]
+    ], '#2563eb') : buildErrorFlex('แก้รายการนี้ไม่ได้', 'รายการอาจถูกลบไปแล้ว หรือยังไม่ใช่รายการที่บันทึกแล้ว');
+  }
+
+  const idTitleMatch = text.match(/^แก้ชื่อ\s+(\d+)\s+(.+)$/);
+  if (idTitleMatch) {
+    const tx = await transactionService.updateTransaction(user.id, Number(idTitleMatch[1]), { title: idTitleMatch[2].trim() });
+    return tx ? buildResultFlex('แก้ชื่อแล้ว', [
+      ['รายการ', tx.title],
+      ['ยอด', `${formatMoney(tx.amount)} บาท`],
+      ['หมวด', tx.category]
+    ], '#2563eb') : buildErrorFlex('แก้รายการนี้ไม่ได้', 'รายการอาจถูกลบไปแล้ว หรือยังไม่ใช่รายการที่บันทึกแล้ว');
+  }
+
+  if (/^แก้ยอด\s+\d+$/.test(text)) {
+    return buildErrorFlex('เติมยอดใหม่ต่อท้าย', 'ตัวอย่าง: แก้ยอด 12 120');
+  }
+  if (/^แก้หมวด\s+\d+$/.test(text)) {
+    return buildErrorFlex('เติมหมวดใหม่ต่อท้าย', 'ตัวอย่าง: แก้หมวด 12 อาหาร');
+  }
+  if (/^แก้ชื่อ\s+\d+$/.test(text)) {
+    return buildErrorFlex('เติมชื่อใหม่ต่อท้าย', 'ตัวอย่าง: แก้ชื่อ 12 ข้าวเที่ยง');
+  }
+  if (/^(แก้ล่าสุด|แก้หมวดล่าสุด|แก้ชื่อรายการล่าสุด)$/.test(text)) {
+    return buildErrorFlex('ยังไม่ได้ใส่ค่าที่จะแก้', 'กดเมนู แก้/ลบ เพื่อเลือกรายการวันนี้ หรือพิมพ์ตัวอย่าง: แก้ล่าสุด 120');
+  }
+
   const amountMatch = text.match(/^แก้ล่าสุด\s+(\d[\d,]*(?:\.\d{1,2})?)$/);
   if (amountMatch) {
     const tx = await transactionService.updateLatest(user.id, { amount: parseAmount(amountMatch[1]) }, status);
@@ -387,15 +490,15 @@ function buildProcessingFlex() {
 function buildPendingFlex(tx, options = {}) {
   const candidates = Array.isArray(options.candidates) ? options.candidates.slice(0, 3) : [];
   const candidateButtons = candidates.map((item, index) => ({
-    type: 'button',
-    style: 'secondary',
-    height: 'sm',
-    action: {
-      type: 'postback',
-      label: `เลือก ${formatMoney(item.amount)}`,
-      data: `action=select_amount&index=${index + 1}`,
-      displayText: `เลือกยอด ${formatMoney(item.amount)}`
-    }
+      type: 'button',
+      style: 'secondary',
+      height: 'sm',
+      action: {
+        type: 'postback',
+        label: `เลือก ${formatMoney(item.amount)}`,
+        data: `action=select_amount&id=${tx.id}&index=${index + 1}`,
+        displayText: `เลือกยอด ${formatMoney(item.amount)}`
+      }
   }));
 
   const bodyContents = [
@@ -447,12 +550,12 @@ function buildPendingFlex(tx, options = {}) {
           type: 'button',
           style: 'primary',
           color: '#16a34a',
-          action: { type: 'postback', label: 'ยืนยันบันทึก', data: 'action=confirm', displayText: 'ยืนยัน' }
+          action: { type: 'postback', label: 'ยืนยันบันทึก', data: `action=confirm&id=${tx.id}`, displayText: 'ยืนยัน' }
         },
         {
           type: 'button',
           style: 'secondary',
-          action: { type: 'postback', label: 'ยกเลิก', data: 'action=cancel', displayText: 'ยกเลิก' }
+          action: { type: 'postback', label: 'ยกเลิก', data: `action=cancel&id=${tx.id}`, displayText: 'ยกเลิก' }
         }
       ]
     }
@@ -508,12 +611,12 @@ function buildDeleteConfirmFlex(tx) {
           type: 'button',
           style: 'primary',
           color: '#dc2626',
-          action: { type: 'postback', label: 'ยืนยันลบ', data: 'action=confirm', displayText: 'ยืนยัน' }
+          action: { type: 'postback', label: 'ยืนยันลบ', data: `action=delete_transaction&id=${tx.id}`, displayText: 'ยืนยันลบ' }
         },
         {
           type: 'button',
           style: 'secondary',
-          action: { type: 'postback', label: 'ยกเลิก', data: 'action=cancel', displayText: 'ยกเลิก' }
+          action: { type: 'postback', label: 'ยกเลิก', data: `action=cancel_delete&id=${tx.id}`, displayText: 'ยกเลิก' }
         }
       ]
     }
@@ -625,6 +728,121 @@ function buildMonthlyAnalysisFlex(analysis) {
         ...warningItems,
         flexText('คำแนะนำ', { size: 'sm', weight: 'bold', color: '#065f46', margin: 'md' }),
         ...recommendationItems
+      ]
+    }
+  });
+}
+
+function buildManageTodayFlex(rows) {
+  if (!rows.length) {
+    return buildErrorFlex('วันนี้ยังไม่มีรายการให้แก้', 'บันทึกรายการก่อน หรือพิมพ์ รายการล่าสุด เพื่อดูรายการย้อนหลัง');
+  }
+
+  const items = rows.slice(0, 10).map((row, index) => {
+    const sign = row.type === 'income' ? '+' : '-';
+    const color = row.type === 'income' ? '#16a34a' : '#dc2626';
+    return {
+      type: 'box',
+      layout: 'vertical',
+      paddingAll: '10px',
+      backgroundColor: '#f9fafb',
+      cornerRadius: '8px',
+      spacing: 'xs',
+      contents: [
+        {
+          type: 'box',
+          layout: 'baseline',
+          spacing: 'sm',
+          contents: [
+            flexText(`${index + 1}.`, { size: 'sm', color: '#6b7280', flex: 1 }),
+            flexText(row.title, { size: 'sm', weight: 'bold', color: '#111827', flex: 5, wrap: true }),
+            flexText(`${sign}${formatMoney(row.amount)}`, { size: 'sm', weight: 'bold', color, flex: 3, align: 'end' })
+          ]
+        },
+        flexText(`${row.category || '-'} • ${row.transactionDate || '-'}`, {
+          size: 'xs',
+          color: '#6b7280',
+          wrap: true
+        }),
+        {
+          type: 'button',
+          height: 'sm',
+          style: 'secondary',
+          margin: 'xs',
+          action: {
+            type: 'postback',
+            label: 'แก้/ลบรายการนี้',
+            data: `action=manage&id=${row.id}`,
+            displayText: `แก้/ลบ ${row.title}`
+          }
+        }
+      ]
+    };
+  });
+
+  return flexMessage('เลือกรายการวันนี้', {
+    type: 'bubble',
+    size: 'mega',
+    header: flexHeader('เลือกรายการวันนี้', 'แตะรายการที่ต้องการแก้ไขหรือลบ', '#111827'),
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'sm',
+      contents: [
+        flexText(`พบ ${rows.length} รายการของวันนี้`, { size: 'sm', color: '#4b5563', wrap: true }),
+        ...items
+      ]
+    }
+  });
+}
+
+function buildManageTransactionFlex(tx) {
+  return flexMessage('แก้/ลบรายการ', {
+    type: 'bubble',
+    size: 'mega',
+    header: flexHeader('แก้/ลบรายการ', 'เลือกปุ่ม แล้วเติมค่าที่ต้องการต่อท้าย', '#111827'),
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'md',
+      contents: [
+        flexText(tx.title || 'รายการ', { weight: 'bold', size: 'xl', wrap: true }),
+        detailRow('ยอด', `${formatMoney(tx.amount)} บาท`, true),
+        detailRow('หมวด', tx.category || '-'),
+        detailRow('วันที่', tx.transactionDate || '-'),
+        flexText(`ตัวอย่าง: แก้ยอด ${tx.id} 120 หรือ แก้หมวด ${tx.id} อาหาร`, {
+          size: 'xs',
+          color: '#6b7280',
+          wrap: true
+        })
+      ]
+    },
+    footer: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'sm',
+      contents: [
+        {
+          type: 'button',
+          style: 'secondary',
+          action: { type: 'message', label: 'แก้ยอด', text: `แก้ยอด ${tx.id} ` }
+        },
+        {
+          type: 'button',
+          style: 'secondary',
+          action: { type: 'message', label: 'แก้หมวด', text: `แก้หมวด ${tx.id} ` }
+        },
+        {
+          type: 'button',
+          style: 'secondary',
+          action: { type: 'message', label: 'แก้ชื่อ', text: `แก้ชื่อ ${tx.id} ` }
+        },
+        {
+          type: 'button',
+          style: 'primary',
+          color: '#dc2626',
+          action: { type: 'postback', label: 'ลบรายการนี้', data: `action=delete_transaction&id=${tx.id}`, displayText: `ลบ ${tx.title}` }
+        }
       ]
     }
   });
@@ -871,8 +1089,8 @@ function helpText() {
     '- รายจ่าย: กาแฟ 45, จ่าย ข้าว 60, ซื้อของ 1200 หมวด ของใช้',
     '- รายรับ: รับ เงินเดือน 18000, ได้เงิน 1000',
     '- รูปภาพ: ส่งรูปบิล/สลิป แล้วตอบ ยืนยัน หลังตรวจสอบ',
-    '- แก้ไข: แก้/ลบล่าสุด, แก้ล่าสุด 120, แก้หมวดล่าสุด อาหาร, แก้ชื่อรายการล่าสุด ข้าวเที่ยง',
-    '- ลบ: ลบล่าสุด แล้วตอบ ยืนยัน',
+    '- แก้ไข: แก้/ลบล่าสุด เพื่อเลือกรายการวันนี้, แก้ยอด 12 120, แก้หมวด 12 อาหาร, แก้ชื่อ 12 ข้าวเที่ยง',
+    '- ลบ: แก้/ลบล่าสุด แล้วเลือกรายการ หรือพิมพ์ ลบล่าสุด',
     '- สรุป: สรุปวันนี้, สรุปเดือนนี้',
     '- วิเคราะห์: วิเคราะห์เดือนนี้, AI เดือนนี้',
     '- ดูย้อนหลัง: รายการล่าสุด, ย้อนหลัง 7 วัน',

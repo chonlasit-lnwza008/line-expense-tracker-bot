@@ -43,6 +43,10 @@ async function getTransaction(id) {
   return db.get('SELECT * FROM transactions WHERE id = $1', [id]);
 }
 
+async function getUserTransaction(userId, id) {
+  return db.get('SELECT * FROM transactions WHERE id = $1 AND userId = $2', [id, userId]);
+}
+
 async function getLatestTransaction(userId, status = 'confirmed') {
   return db.get(`
     SELECT * FROM transactions
@@ -74,6 +78,17 @@ async function listTransactionsFromDate(userId, startDate, limit = 30) {
     ORDER BY transactionDate DESC, createdAt DESC, id DESC
     LIMIT $3
   `, [userId, startDate, Math.max(1, Math.min(Number(limit) || 30, 80))]);
+}
+
+async function listTransactionsByDate(userId, date = toDateOnly(), limit = 30) {
+  return db.all(`
+    SELECT * FROM transactions
+    WHERE userId = $1
+      AND status = 'confirmed'
+      AND transactionDate = $2
+    ORDER BY createdAt DESC, id DESC
+    LIMIT $3
+  `, [userId, date, Math.max(1, Math.min(Number(limit) || 30, 80))]);
 }
 
 async function confirmTransaction(userId, id) {
@@ -110,6 +125,49 @@ async function updateLatest(userId, patch, status = 'confirmed') {
   `, [...entries.map((entry) => entry[1]), latest.id, userId]);
 
   return getTransaction(latest.id);
+}
+
+async function updateTransaction(userId, id, patch) {
+  const target = await getUserTransaction(userId, id);
+  if (!target || target.status !== 'confirmed') return null;
+
+  const allowed = ['amount', 'category', 'title', 'note', 'transactionDate'];
+  const entries = Object.entries(patch).filter(([key]) => allowed.includes(key));
+  if (!entries.length) return target;
+
+  const setSql = entries.map(([key], index) => `${key} = $${index + 1}`).join(', ');
+  await db.run(`
+    UPDATE transactions
+    SET ${setSql}, updatedAt = CURRENT_TIMESTAMP
+    WHERE id = $${entries.length + 1} AND userId = $${entries.length + 2}
+  `, [...entries.map((entry) => entry[1]), id, userId]);
+
+  return getTransaction(id);
+}
+
+async function updatePendingTransaction(userId, id, patch) {
+  const target = await getUserTransaction(userId, id);
+  if (!target || target.status !== 'pending') return null;
+
+  const allowed = ['amount', 'category', 'title', 'note', 'transactionDate'];
+  const entries = Object.entries(patch).filter(([key]) => allowed.includes(key));
+  if (!entries.length) return target;
+
+  const setSql = entries.map(([key], index) => `${key} = $${index + 1}`).join(', ');
+  await db.run(`
+    UPDATE transactions
+    SET ${setSql}, updatedAt = CURRENT_TIMESTAMP
+    WHERE id = $${entries.length + 1} AND userId = $${entries.length + 2} AND status = 'pending'
+  `, [...entries.map((entry) => entry[1]), id, userId]);
+
+  return getTransaction(id);
+}
+
+async function cancelConfirmedTransaction(userId, id) {
+  const target = await getUserTransaction(userId, id);
+  if (!target || target.status !== 'confirmed') return null;
+  await db.run('UPDATE transactions SET status = $1, updatedAt = CURRENT_TIMESTAMP WHERE id = $2 AND userId = $3', ['cancelled', id, userId]);
+  return getTransaction(id);
 }
 
 async function requestDeleteLatest(userId) {
@@ -152,13 +210,18 @@ module.exports = {
   findOrCreateUser,
   createTransaction,
   getTransaction,
+  getUserTransaction,
   getLatestTransaction,
   getLatestPending,
   listRecentTransactions,
   listTransactionsFromDate,
+  listTransactionsByDate,
   confirmTransaction,
   cancelTransaction,
   updateLatest,
+  updateTransaction,
+  updatePendingTransaction,
+  cancelConfirmedTransaction,
   requestDeleteLatest,
   confirmDeleteLatest,
   findDuplicate
