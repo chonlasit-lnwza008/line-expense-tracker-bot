@@ -83,11 +83,18 @@ function pushToLine(to, reply) {
 async function handleText(user, text) {
   const trimmed = text.trim();
   const pending = await transactionService.getLatestPending(user.id);
+  const pendingAction = await transactionService.getPendingAction(user.id);
   const isConfirm = /^(ยืนยัน|บันทึก|ตกลง|โอเค|ok|confirm|yes|ใช่)$/i.test(trimmed);
   const isCancel = /^(ยกเลิก|cancel|no|ไม่|ไม่เอา)$/i.test(trimmed);
 
   if (/^(help|วิธีใช้)$/i.test(trimmed)) return buildHelpFlex();
   if (/^(dashboard|แดชบอร์ด)$/i.test(trimmed)) return buildDashboardLinkFlex();
+  if (isCancel && pendingAction) {
+    await transactionService.clearPendingAction(user.id);
+    return buildResultFlex('ยกเลิกการแก้ไขแล้ว', [
+      ['สถานะ', 'ยังไม่ได้เปลี่ยนข้อมูลรายการ']
+    ], '#6b7280');
+  }
   if (isCancel && pending) {
     await transactionService.cancelTransaction(user.id, pending.id);
     return buildResultFlex('ยกเลิกแล้ว', [
@@ -117,6 +124,9 @@ async function handleText(user, text) {
     const rows = await transactionService.listTransactionsByDate(user.id, toDateOnly());
     return buildManageTodayFlex(rows);
   }
+
+  const pendingEditReply = await handlePendingEditInput(user, pendingAction, trimmed);
+  if (pendingEditReply) return pendingEditReply;
 
   const editReply = await handleEdit(user, trimmed, pending ? 'pending' : 'confirmed');
   if (editReply) return editReply;
@@ -199,6 +209,18 @@ async function handlePostback(user, data = '') {
       return buildErrorFlex('รายการนี้จัดการไม่ได้แล้ว', 'รายการอาจถูกลบหรือถูกเปลี่ยนสถานะไปแล้ว ลองกดเมนูแก้/ลบใหม่อีกครั้ง');
     }
     return buildManageTransactionFlex(target);
+  }
+
+  if (action === 'start_edit') {
+    const field = params.get('field');
+    if (!target || target.status !== 'confirmed') {
+      return buildErrorFlex('แก้รายการนี้ไม่ได้แล้ว', 'รายการอาจถูกลบหรือเปลี่ยนสถานะไปแล้ว ลองกดเมนูแก้/ลบใหม่อีกครั้ง');
+    }
+    if (!['amount', 'category', 'title'].includes(field)) {
+      return buildErrorFlex('เลือกช่องแก้ไขไม่ได้', 'ลองกดปุ่มแก้/ลบใหม่อีกครั้ง');
+    }
+    await transactionService.setPendingEdit(user.id, target.id, field);
+    return buildEditPromptFlex(target, field);
   }
 
   if (action === 'delete_transaction') {
@@ -361,6 +383,43 @@ async function verifySlipFromQr(imagePath) {
 async function processImageAndPush(user, messageId) {
   const reply = await handleImage(user, messageId);
   await pushToLine(user.lineUserId, reply);
+}
+
+async function handlePendingEditInput(user, pendingAction, text) {
+  if (!pendingAction || pendingAction.action !== 'edit_transaction') return null;
+
+  const transactionId = Number(pendingAction.transactionId);
+  const target = await transactionService.getUserTransaction(user.id, transactionId);
+  if (!target || target.status !== 'confirmed') {
+    await transactionService.clearPendingAction(user.id);
+    return buildErrorFlex('รายการนี้แก้ไม่ได้แล้ว', 'รายการอาจถูกลบหรือเปลี่ยนสถานะไปแล้ว ลองกดเมนูแก้/ลบใหม่อีกครั้ง');
+  }
+
+  const field = pendingAction.field;
+  const patch = {};
+  if (field === 'amount') {
+    const amount = parseAmount(text);
+    if (!amount) return buildEditPromptFlex(target, field, 'ยังอ่านยอดใหม่ไม่ได้ ลองพิมพ์เฉพาะตัวเลข เช่น 120');
+    patch.amount = amount;
+  } else if (field === 'category') {
+    if (!text.trim()) return buildEditPromptFlex(target, field, 'พิมพ์ชื่อหมวดใหม่ เช่น อาหาร หรือ เดินทาง');
+    patch.category = text.trim().slice(0, 80);
+  } else if (field === 'title') {
+    if (!text.trim()) return buildEditPromptFlex(target, field, 'พิมพ์ชื่อรายการใหม่ เช่น ข้าวเที่ยง');
+    patch.title = text.trim().slice(0, 120);
+  } else {
+    await transactionService.clearPendingAction(user.id);
+    return buildErrorFlex('แก้ช่องนี้ไม่ได้', 'ลองกดเมนูแก้/ลบใหม่อีกครั้ง');
+  }
+
+  const updated = await transactionService.updateTransaction(user.id, transactionId, patch);
+  await transactionService.clearPendingAction(user.id);
+  return buildResultFlex('แก้รายการแล้ว', [
+    ['รายการ', updated.title],
+    ['ยอด', `${formatMoney(updated.amount)} บาท`],
+    ['หมวด', updated.category],
+    ['วันที่', updated.transactionDate]
+  ], '#2563eb');
 }
 
 async function handleEdit(user, text, status) {
@@ -825,17 +884,17 @@ function buildManageTransactionFlex(tx) {
         {
           type: 'button',
           style: 'secondary',
-          action: { type: 'message', label: 'แก้ยอด', text: `แก้ยอด ${tx.id} ` }
+          action: { type: 'postback', label: 'แก้ยอด', data: `action=start_edit&id=${tx.id}&field=amount`, displayText: 'แก้ยอด' }
         },
         {
           type: 'button',
           style: 'secondary',
-          action: { type: 'message', label: 'แก้หมวด', text: `แก้หมวด ${tx.id} ` }
+          action: { type: 'postback', label: 'แก้หมวด', data: `action=start_edit&id=${tx.id}&field=category`, displayText: 'แก้หมวด' }
         },
         {
           type: 'button',
           style: 'secondary',
-          action: { type: 'message', label: 'แก้ชื่อ', text: `แก้ชื่อ ${tx.id} ` }
+          action: { type: 'postback', label: 'แก้ชื่อ', data: `action=start_edit&id=${tx.id}&field=title`, displayText: 'แก้ชื่อ' }
         },
         {
           type: 'button',
@@ -843,6 +902,52 @@ function buildManageTransactionFlex(tx) {
           color: '#dc2626',
           action: { type: 'postback', label: 'ลบรายการนี้', data: `action=delete_transaction&id=${tx.id}`, displayText: `ลบ ${tx.title}` }
         }
+      ]
+    }
+  });
+}
+
+function buildEditPromptFlex(tx, field, errorText = null) {
+  const labels = {
+    amount: {
+      title: 'ใส่ยอดใหม่',
+      subtitle: 'พิมพ์แค่ตัวเลข เช่น 120',
+      currentLabel: 'ยอดเดิม',
+      currentValue: `${formatMoney(tx.amount)} บาท`,
+      example: 'ตัวอย่าง: 120'
+    },
+    category: {
+      title: 'ใส่หมวดใหม่',
+      subtitle: 'พิมพ์ชื่อหมวด เช่น อาหาร',
+      currentLabel: 'หมวดเดิม',
+      currentValue: tx.category || '-',
+      example: 'ตัวอย่าง: อาหาร'
+    },
+    title: {
+      title: 'ใส่ชื่อใหม่',
+      subtitle: 'พิมพ์ชื่อรายการใหม่',
+      currentLabel: 'ชื่อเดิม',
+      currentValue: tx.title || '-',
+      example: 'ตัวอย่าง: ข้าวเที่ยง'
+    }
+  };
+  const meta = labels[field] || labels.title;
+
+  return flexMessage(meta.title, {
+    type: 'bubble',
+    size: 'mega',
+    header: flexHeader(meta.title, meta.subtitle, errorText ? '#dc2626' : '#2563eb'),
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'md',
+      contents: [
+        flexText(tx.title || 'รายการ', { weight: 'bold', size: 'xl', wrap: true }),
+        detailRow(meta.currentLabel, meta.currentValue, field === 'amount'),
+        detailRow('วันที่', tx.transactionDate || '-'),
+        ...(errorText ? [flexText(errorText, { size: 'sm', color: '#dc2626', wrap: true, weight: 'bold' })] : []),
+        flexText(meta.example, { size: 'sm', color: '#4b5563', wrap: true }),
+        flexText('พิมพ์ "ยกเลิก" ถ้าไม่ต้องการแก้แล้ว', { size: 'xs', color: '#6b7280', wrap: true })
       ]
     }
   });
@@ -1089,7 +1194,7 @@ function helpText() {
     '- รายจ่าย: กาแฟ 45, จ่าย ข้าว 60, ซื้อของ 1200 หมวด ของใช้',
     '- รายรับ: รับ เงินเดือน 18000, ได้เงิน 1000',
     '- รูปภาพ: ส่งรูปบิล/สลิป แล้วตอบ ยืนยัน หลังตรวจสอบ',
-    '- แก้ไข: แก้/ลบล่าสุด เพื่อเลือกรายการวันนี้, แก้ยอด 12 120, แก้หมวด 12 อาหาร, แก้ชื่อ 12 ข้าวเที่ยง',
+    '- แก้ไข: แก้/ลบล่าสุด แล้วกดปุ่มแก้ยอด/แก้หมวด/แก้ชื่อ จากนั้นพิมพ์ค่าใหม่สั้น ๆ',
     '- ลบ: แก้/ลบล่าสุด แล้วเลือกรายการ หรือพิมพ์ ลบล่าสุด',
     '- สรุป: สรุปวันนี้, สรุปเดือนนี้',
     '- วิเคราะห์: วิเคราะห์เดือนนี้, AI เดือนนี้',

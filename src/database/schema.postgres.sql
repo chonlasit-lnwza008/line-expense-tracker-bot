@@ -25,6 +25,15 @@ CREATE TABLE IF NOT EXISTS transactions (
 CREATE INDEX IF NOT EXISTS idx_transactions_user_date ON transactions(userId, transactionDate);
 CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(userId, status);
 
+CREATE TABLE IF NOT EXISTS pending_actions (
+  id BIGSERIAL PRIMARY KEY,
+  userId BIGINT NOT NULL UNIQUE REFERENCES users(id),
+  transactionId BIGINT NOT NULL REFERENCES transactions(id),
+  action TEXT NOT NULL,
+  field TEXT NOT NULL,
+  createdAt TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS budgets (
   id BIGSERIAL PRIMARY KEY,
   userId BIGINT NOT NULL REFERENCES users(id),

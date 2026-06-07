@@ -49,6 +49,7 @@ function createPostgresClient() {
     createdat: 'createdAt',
     updatedat: 'updatedAt',
     userid: 'userId',
+    transactionid: 'transactionId',
     transactiondate: 'transactionDate',
     imagepath: 'imagePath',
     ocrtext: 'ocrText',

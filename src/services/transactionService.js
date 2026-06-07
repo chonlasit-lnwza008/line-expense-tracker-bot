@@ -170,6 +170,40 @@ async function cancelConfirmedTransaction(userId, id) {
   return getTransaction(id);
 }
 
+async function setPendingEdit(userId, transactionId, field) {
+  if (db.client === 'postgres') {
+    await db.run(`
+      INSERT INTO pending_actions (userId, transactionId, action, field, createdAt)
+      VALUES ($1, $2, 'edit_transaction', $3, CURRENT_TIMESTAMP)
+      ON CONFLICT (userId)
+      DO UPDATE SET transactionId = EXCLUDED.transactionId, action = EXCLUDED.action, field = EXCLUDED.field, createdAt = CURRENT_TIMESTAMP
+    `, [userId, transactionId, field]);
+  } else {
+    await db.run(`
+      INSERT INTO pending_actions (userId, transactionId, action, field, createdAt)
+      VALUES ($1, $2, 'edit_transaction', $3, CURRENT_TIMESTAMP)
+      ON CONFLICT(userId)
+      DO UPDATE SET transactionId = excluded.transactionId, action = excluded.action, field = excluded.field, createdAt = CURRENT_TIMESTAMP
+    `, [userId, transactionId, field]);
+  }
+
+  return getPendingAction(userId);
+}
+
+async function getPendingAction(userId) {
+  return db.get(`
+    SELECT pending_actions.*, transactions.title, transactions.amount, transactions.category, transactions.transactionDate, transactions.status
+    FROM pending_actions
+    JOIN transactions ON transactions.id = pending_actions.transactionId
+    WHERE pending_actions.userId = $1
+    LIMIT 1
+  `, [userId]);
+}
+
+async function clearPendingAction(userId) {
+  await db.run('DELETE FROM pending_actions WHERE userId = $1', [userId]);
+}
+
 async function requestDeleteLatest(userId) {
   const latest = await getLatestTransaction(userId, 'confirmed');
   if (!latest) return null;
@@ -222,6 +256,9 @@ module.exports = {
   updateTransaction,
   updatePendingTransaction,
   cancelConfirmedTransaction,
+  setPendingEdit,
+  getPendingAction,
+  clearPendingAction,
   requestDeleteLatest,
   confirmDeleteLatest,
   findDuplicate
