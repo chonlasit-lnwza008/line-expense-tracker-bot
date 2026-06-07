@@ -13,7 +13,7 @@ const exportService = require('../services/exportService');
 const { parseTextTransaction } = require('../parser/textParser');
 const { parseOcrText } = require('../parser/ocrParser');
 const { parseAmount, formatMoney } = require('../utils/moneyUtils');
-const { toDateOnly } = require('../utils/dateUtils');
+const { toDateOnly, formatDisplayDate, formatDisplayMonth } = require('../utils/dateUtils');
 
 const router = express.Router();
 const hasLineCredentials = Boolean(lineConfig.channelAccessToken && lineConfig.channelSecret);
@@ -283,7 +283,7 @@ async function handlePostback(user, data = '') {
       ['รายการ', confirmed.title],
       ['ยอด', `${formatMoney(confirmed.amount)} บาท`],
       ['หมวด', confirmed.category],
-      ['วันที่', confirmed.transactionDate],
+      ['วันที่', formatDisplayDate(confirmed.transactionDate)],
       ...alerts.map((alert) => ['แจ้งเตือน', alert])
     ]);
   }
@@ -418,7 +418,7 @@ async function handlePendingEditInput(user, pendingAction, text) {
     ['รายการ', updated.title],
     ['ยอด', `${formatMoney(updated.amount)} บาท`],
     ['หมวด', updated.category],
-    ['วันที่', updated.transactionDate]
+    ['วันที่', formatDisplayDate(updated.transactionDate)]
   ], '#2563eb');
 }
 
@@ -565,7 +565,7 @@ function buildPendingFlex(tx, options = {}) {
     detailRow('ยอด', `${formatMoney(tx.amount)} บาท`, true),
     detailRow('ประเภท', tx.type || '-'),
     detailRow('หมวด', tx.category || '-'),
-    detailRow('วันที่', tx.transactionDate || '-'),
+    detailRow('วันที่', formatDisplayDate(tx.transactionDate)),
     flexText('ตรวจสอบก่อนกดยืนยัน ระบบจะยังไม่บันทึกจนกว่าจะกดปุ่ม', {
       size: 'xs',
       color: '#0f766e',
@@ -640,7 +640,7 @@ function buildSavedFlex(tx, alerts = []) {
     ['รายการ', tx.title],
     ['ยอด', `${formatMoney(tx.amount)} บาท`],
     ['หมวด', tx.category],
-    ['วันที่', tx.transactionDate],
+    ['วันที่', formatDisplayDate(tx.transactionDate)],
     ...alerts.map((alert) => ['แจ้งเตือน', alert])
   ]);
 }
@@ -658,7 +658,7 @@ function buildDeleteConfirmFlex(tx) {
         flexText(tx.title || 'รายการล่าสุด', { weight: 'bold', size: 'xl', wrap: true }),
         detailRow('ยอด', `${formatMoney(tx.amount)} บาท`, true),
         detailRow('หมวด', tx.category || '-'),
-        detailRow('วันที่', tx.transactionDate || '-')
+        detailRow('วันที่', formatDisplayDate(tx.transactionDate))
       ]
     },
     footer: {
@@ -702,7 +702,7 @@ function buildDailySummaryFlex(summary) {
   return flexMessage('สรุปวันนี้', {
     type: 'bubble',
     size: 'mega',
-    header: flexHeader(`สรุปวันนี้ ${summary.date}`, 'ภาพรวมรายรับรายจ่าย', '#2563eb'),
+    header: flexHeader(`สรุปวันนี้ ${formatDisplayDate(summary.date)}`, 'ภาพรวมรายรับรายจ่าย', '#2563eb'),
     body: {
       type: 'box',
       layout: 'vertical',
@@ -730,7 +730,7 @@ function buildMonthlySummaryFlex(summary) {
   return flexMessage('สรุปเดือนนี้', {
     type: 'bubble',
     size: 'mega',
-    header: flexHeader(`สรุปเดือน ${summary.month}`, 'ภาพรวมทั้งเดือน', '#7c3aed'),
+    header: flexHeader(`สรุปเดือน ${formatDisplayMonth(summary.month)}`, 'ภาพรวมทั้งเดือน', '#7c3aed'),
     body: {
       type: 'box',
       layout: 'vertical',
@@ -771,7 +771,7 @@ function buildMonthlyAnalysisFlex(analysis) {
   return flexMessage('วิเคราะห์เดือนนี้', {
     type: 'bubble',
     size: 'mega',
-    header: flexHeader(`วิเคราะห์เดือน ${analysis.month}`, 'AI rule-based จากข้อมูลที่บันทึกจริง', '#0f766e'),
+    header: flexHeader(`วิเคราะห์เดือน ${formatDisplayMonth(analysis.month)}`, 'AI rule-based จากข้อมูลที่บันทึกจริง', '#0f766e'),
     body: {
       type: 'box',
       layout: 'vertical',
@@ -818,7 +818,7 @@ function buildManageTodayFlex(rows) {
             flexText(`${sign}${formatMoney(row.amount)}`, { size: 'sm', weight: 'bold', color, flex: 3, align: 'end' })
           ]
         },
-        flexText(`${row.category || '-'} • ${row.transactionDate || '-'}`, {
+        flexText(`${row.category || '-'} • ${formatDisplayDate(row.transactionDate)}`, {
           size: 'xs',
           color: '#6b7280',
           wrap: true
@@ -868,7 +868,7 @@ function buildManageTransactionFlex(tx) {
         flexText(tx.title || 'รายการ', { weight: 'bold', size: 'xl', wrap: true }),
         detailRow('ยอด', `${formatMoney(tx.amount)} บาท`, true),
         detailRow('หมวด', tx.category || '-'),
-        detailRow('วันที่', tx.transactionDate || '-'),
+        detailRow('วันที่', formatDisplayDate(tx.transactionDate)),
         flexText(`ตัวอย่าง: แก้ยอด ${tx.id} 120 หรือ แก้หมวด ${tx.id} อาหาร`, {
           size: 'xs',
           color: '#6b7280',
@@ -944,7 +944,7 @@ function buildEditPromptFlex(tx, field, errorText = null) {
       contents: [
         flexText(tx.title || 'รายการ', { weight: 'bold', size: 'xl', wrap: true }),
         detailRow(meta.currentLabel, meta.currentValue, field === 'amount'),
-        detailRow('วันที่', tx.transactionDate || '-'),
+        detailRow('วันที่', formatDisplayDate(tx.transactionDate)),
         ...(errorText ? [flexText(errorText, { size: 'sm', color: '#dc2626', wrap: true, weight: 'bold' })] : []),
         flexText(meta.example, { size: 'sm', color: '#4b5563', wrap: true }),
         flexText('พิมพ์ "ยกเลิก" ถ้าไม่ต้องการแก้แล้ว', { size: 'xs', color: '#6b7280', wrap: true })
@@ -966,7 +966,7 @@ function buildManageLatestFlex(tx) {
         flexText(tx.title || 'รายการล่าสุด', { weight: 'bold', size: 'xl', wrap: true }),
         detailRow('ยอด', `${formatMoney(tx.amount)} บาท`, true),
         detailRow('หมวด', tx.category || '-'),
-        detailRow('วันที่', tx.transactionDate || '-'),
+        detailRow('วันที่', formatDisplayDate(tx.transactionDate)),
         flexText('ตัวอย่าง: แก้ล่าสุด 120 หรือ แก้หมวดล่าสุด อาหาร', {
           size: 'xs',
           color: '#6b7280',
@@ -1030,7 +1030,7 @@ function buildRecentTransactionsFlex(rows, limit, title = 'รายการล
             })
           ]
         },
-        flexText(`${row.transactionDate} · ${row.category}`, { size: 'xs', color: '#6b7280', margin: 'xs', wrap: true })
+        flexText(`${formatDisplayDate(row.transactionDate)} · ${row.category}`, { size: 'xs', color: '#6b7280', margin: 'xs', wrap: true })
       ]
     };
   });
@@ -1183,7 +1183,7 @@ function formatPending(tx, heading = 'รอตรวจสอบ') {
     `รายการ: ${tx.title}`,
     `ยอด: ${formatMoney(tx.amount)} บาท`,
     `หมวด: ${tx.category}`,
-    `วันที่: ${tx.transactionDate}`,
+    `วันที่: ${formatDisplayDate(tx.transactionDate)}`,
     'ตอบ "ยืนยัน" เพื่อบันทึก, "ยกเลิก" เพื่อยกเลิก หรือใช้คำสั่งแก้ล่าสุด'
   ].join('\n');
 }

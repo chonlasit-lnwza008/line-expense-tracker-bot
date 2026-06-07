@@ -1,5 +1,5 @@
 const db = require('../config/database');
-const { toDateOnly, currentMonth, monthRange } = require('../utils/dateUtils');
+const { toDateOnly, currentMonth, monthRange, formatDisplayDate, formatDisplayMonth } = require('../utils/dateUtils');
 const { formatMoney } = require('../utils/moneyUtils');
 
 function normalizeTransaction(row) {
@@ -45,7 +45,7 @@ async function monthlySummary(userId, month = currentMonth()) {
 function formatDailySummary(summary) {
   const list = summary.rows.map((row) => `- ${row.title} ${formatMoney(row.amount)} (${row.category})`).join('\n') || '- ไม่มีรายการ';
   return [
-    `สรุปวันนี้ (${summary.date})`,
+    `สรุปวันนี้ (${formatDisplayDate(summary.date)})`,
     `รายรับรวม: ${formatMoney(summary.income)} บาท`,
     `รายจ่ายรวม: ${formatMoney(summary.expense)} บาท`,
     `คงเหลือสุทธิ: ${formatMoney(summary.net)} บาท`,
@@ -57,7 +57,7 @@ function formatDailySummary(summary) {
 function formatMonthlySummary(summary) {
   const top = summary.topCategory ? `${summary.topCategory[0]} ${formatMoney(summary.topCategory[1])} บาท` : 'ไม่มี';
   return [
-    `สรุปเดือนนี้ (${summary.month})`,
+    `สรุปเดือนนี้ (${formatDisplayMonth(summary.month)})`,
     `รายรับรวม: ${formatMoney(summary.income)} บาท`,
     `รายจ่ายรวม: ${formatMoney(summary.expense)} บาท`,
     `คงเหลือ: ${formatMoney(summary.net)} บาท`,
