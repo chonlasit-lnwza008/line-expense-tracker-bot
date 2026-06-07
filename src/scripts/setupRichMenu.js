@@ -14,7 +14,7 @@ const buttons = [
   { label: 'เดือนนี้', hint: 'ภาพรวมเดือน', message: 'สรุปเดือนนี้', color: '#2563eb' },
   { label: 'ล่าสุด', hint: 'รายการล่าสุด', message: 'รายการล่าสุด', color: '#7c3aed' },
   { label: 'ย้อนหลัง', hint: '7 วันล่าสุด', message: 'ย้อนหลัง 7 วัน', color: '#ea580c' },
-  { label: 'Dashboard', hint: 'เปิดกราฟ', message: 'dashboard', color: '#111827' },
+  { label: 'วิเคราะห์', hint: 'คำแนะนำ AI', message: 'วิเคราะห์เดือนนี้', color: '#111827' },
   { label: 'วิธีใช้', hint: 'คำสั่งทั้งหมด', message: 'help', color: '#6b7280' }
 ];
 

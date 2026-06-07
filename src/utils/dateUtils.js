@@ -21,6 +21,12 @@ function monthRange(month = currentMonth()) {
   };
 }
 
+function previousMonth(month = currentMonth()) {
+  const date = new Date(`${month}-01T00:00:00.000Z`);
+  date.setUTCMonth(date.getUTCMonth() - 1);
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
 function addMonths(date, months) {
   const next = new Date(date);
   next.setMonth(next.getMonth() + months);
@@ -31,5 +37,6 @@ module.exports = {
   toDateOnly,
   currentMonth,
   monthRange,
+  previousMonth,
   addMonths
 };

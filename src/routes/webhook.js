@@ -7,6 +7,7 @@ const qrService = require('../services/qrService');
 const slipVerificationService = require('../services/slipVerificationService');
 const transactionService = require('../services/transactionService');
 const summaryService = require('../services/summaryService');
+const analysisService = require('../services/analysisService');
 const budgetService = require('../services/budgetService');
 const exportService = require('../services/exportService');
 const { parseTextTransaction } = require('../parser/textParser');
@@ -125,6 +126,9 @@ async function handleText(user, text) {
   }
   if (/^สรุปเดือนนี้$/.test(trimmed)) {
     return buildMonthlySummaryFlex(await summaryService.monthlySummary(user.id));
+  }
+  if (/^(วิเคราะห์เดือนนี้|AI เดือนนี้|ai เดือนนี้|คำแนะนำเดือนนี้)$/.test(trimmed)) {
+    return buildMonthlyAnalysisFlex(await analysisService.monthlyAnalysis(user.id));
   }
   if (/^export\s*เดือนนี้$/i.test(trimmed)) return exportService.exportTransactions(user.id, 'month');
   if (/^export\s*ทั้งหมด$/i.test(trimmed)) return exportService.exportTransactions(user.id, 'all');
@@ -574,6 +578,52 @@ function buildMonthlySummaryFlex(summary) {
   });
 }
 
+function buildMonthlyAnalysisFlex(analysis) {
+  const expenseDiff = analysis.current.expense - analysis.previous.expense;
+  const diffText = analysis.previous.expense > 0
+    ? `${expenseDiff >= 0 ? '+' : '-'}${formatMoney(Math.abs(expenseDiff))} บาทจากเดือนก่อน`
+    : 'ยังไม่มีข้อมูลเดือนก่อน';
+
+  const insightItems = analysis.insights.map((text) => flexText(`• ${text}`, {
+    size: 'sm',
+    color: '#374151',
+    wrap: true
+  }));
+  const warningItems = analysis.warnings.map((text) => flexText(`• ${text}`, {
+    size: 'sm',
+    color: '#991b1b',
+    wrap: true
+  }));
+  const recommendationItems = analysis.recommendations.map((text) => flexText(`• ${text}`, {
+    size: 'sm',
+    color: '#065f46',
+    wrap: true
+  }));
+
+  return flexMessage('วิเคราะห์เดือนนี้', {
+    type: 'bubble',
+    size: 'mega',
+    header: flexHeader(`วิเคราะห์เดือน ${analysis.month}`, 'AI rule-based จากข้อมูลที่บันทึกจริง', '#0f766e'),
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'md',
+      contents: [
+        detailRow('รายจ่ายเดือนนี้', `${formatMoney(analysis.current.expense)} บาท`, true),
+        detailRow('เทียบเดือนก่อน', diffText),
+        detailRow('จำนวนรายการ', `${analysis.current.rows.length} รายการ`),
+        { type: 'separator', margin: 'md' },
+        flexText('สิ่งที่เห็น', { size: 'sm', weight: 'bold', color: '#111827', margin: 'md' }),
+        ...insightItems,
+        flexText('ควรระวัง', { size: 'sm', weight: 'bold', color: '#991b1b', margin: 'md' }),
+        ...warningItems,
+        flexText('คำแนะนำ', { size: 'sm', weight: 'bold', color: '#065f46', margin: 'md' }),
+        ...recommendationItems
+      ]
+    }
+  });
+}
+
 function buildRecentTransactionsFlex(rows, limit, title = 'รายการล่าสุด') {
   const items = rows.slice(0, limit).map((row) => {
     const isIncome = row.type === 'income';
@@ -695,7 +745,7 @@ function buildHelpFlex() {
         flexText('รูปสลิป', { weight: 'bold', color: '#111827', margin: 'md' }),
         flexText('ส่งรูป แล้วกดปุ่มยืนยันบนการ์ดหลังตรวจสอบ', { size: 'sm', color: '#4b5563', wrap: true }),
         flexText('คำสั่งอื่น', { weight: 'bold', color: '#111827', margin: 'md' }),
-        flexText('สรุป, สรุปเดือนนี้, รายการล่าสุด, ย้อนหลัง 7 วัน, ลบล่าสุด, ตั้งงบ 8000, export เดือนนี้', {
+        flexText('สรุป, สรุปเดือนนี้, วิเคราะห์เดือนนี้, รายการล่าสุด, ย้อนหลัง 7 วัน, ลบล่าสุด, ตั้งงบ 8000, export เดือนนี้', {
           size: 'sm',
           color: '#4b5563',
           wrap: true
@@ -766,6 +816,7 @@ function helpText() {
     '- แก้ไข: แก้ล่าสุด 120, แก้หมวดล่าสุด อาหาร, แก้ชื่อรายการล่าสุด ข้าวเที่ยง',
     '- ลบ: ลบล่าสุด แล้วตอบ ยืนยัน',
     '- สรุป: สรุปวันนี้, สรุปเดือนนี้',
+    '- วิเคราะห์: วิเคราะห์เดือนนี้, AI เดือนนี้',
     '- ดูย้อนหลัง: รายการล่าสุด, ย้อนหลัง 7 วัน',
     '- งบ: ตั้งงบ 8000, งบอาหาร 3000',
     '- เป้า: ตั้งเป้า iPad 18000 ใน 6 เดือน',
