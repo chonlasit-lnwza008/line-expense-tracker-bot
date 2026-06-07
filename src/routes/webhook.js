@@ -115,6 +115,12 @@ async function handleText(user, text) {
     return buildDeleteConfirmFlex(target);
   }
 
+  if (/^(แก้\/ลบล่าสุด|จัดการล่าสุด|แก้รายการล่าสุด)$/.test(trimmed)) {
+    const latest = await transactionService.getLatestTransaction(user.id, 'confirmed');
+    if (!latest) return buildErrorFlex('ยังไม่มีรายการให้จัดการ', 'บันทึกรายการก่อน แล้วค่อยใช้เมนูแก้/ลบ');
+    return buildManageLatestFlex(latest);
+  }
+
   const editReply = await handleEdit(user, trimmed, pending ? 'pending' : 'confirmed');
   if (editReply) return editReply;
 
@@ -624,6 +630,58 @@ function buildMonthlyAnalysisFlex(analysis) {
   });
 }
 
+function buildManageLatestFlex(tx) {
+  return flexMessage('แก้/ลบรายการล่าสุด', {
+    type: 'bubble',
+    size: 'mega',
+    header: flexHeader('แก้/ลบรายการล่าสุด', 'เลือกคำสั่ง แล้วพิมพ์ค่าที่ต้องการต่อท้าย', '#111827'),
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'md',
+      contents: [
+        flexText(tx.title || 'รายการล่าสุด', { weight: 'bold', size: 'xl', wrap: true }),
+        detailRow('ยอด', `${formatMoney(tx.amount)} บาท`, true),
+        detailRow('หมวด', tx.category || '-'),
+        detailRow('วันที่', tx.transactionDate || '-'),
+        flexText('ตัวอย่าง: แก้ล่าสุด 120 หรือ แก้หมวดล่าสุด อาหาร', {
+          size: 'xs',
+          color: '#6b7280',
+          wrap: true
+        })
+      ]
+    },
+    footer: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'sm',
+      contents: [
+        {
+          type: 'button',
+          style: 'secondary',
+          action: { type: 'message', label: 'แก้ยอด', text: 'แก้ล่าสุด ' }
+        },
+        {
+          type: 'button',
+          style: 'secondary',
+          action: { type: 'message', label: 'แก้หมวด', text: 'แก้หมวดล่าสุด ' }
+        },
+        {
+          type: 'button',
+          style: 'secondary',
+          action: { type: 'message', label: 'แก้ชื่อ', text: 'แก้ชื่อรายการล่าสุด ' }
+        },
+        {
+          type: 'button',
+          style: 'primary',
+          color: '#dc2626',
+          action: { type: 'message', label: 'ลบรายการนี้', text: 'ลบล่าสุด' }
+        }
+      ]
+    }
+  });
+}
+
 function buildRecentTransactionsFlex(rows, limit, title = 'รายการล่าสุด') {
   const items = rows.slice(0, limit).map((row) => {
     const isIncome = row.type === 'income';
@@ -745,7 +803,7 @@ function buildHelpFlex() {
         flexText('รูปสลิป', { weight: 'bold', color: '#111827', margin: 'md' }),
         flexText('ส่งรูป แล้วกดปุ่มยืนยันบนการ์ดหลังตรวจสอบ', { size: 'sm', color: '#4b5563', wrap: true }),
         flexText('คำสั่งอื่น', { weight: 'bold', color: '#111827', margin: 'md' }),
-        flexText('สรุป, สรุปเดือนนี้, วิเคราะห์เดือนนี้, รายการล่าสุด, ย้อนหลัง 7 วัน, ลบล่าสุด, ตั้งงบ 8000, export เดือนนี้', {
+        flexText('สรุป, สรุปเดือนนี้, วิเคราะห์เดือนนี้, รายการล่าสุด, แก้/ลบล่าสุด, ย้อนหลัง 7 วัน, ตั้งงบ 8000, export เดือนนี้', {
           size: 'sm',
           color: '#4b5563',
           wrap: true
@@ -813,7 +871,7 @@ function helpText() {
     '- รายจ่าย: กาแฟ 45, จ่าย ข้าว 60, ซื้อของ 1200 หมวด ของใช้',
     '- รายรับ: รับ เงินเดือน 18000, ได้เงิน 1000',
     '- รูปภาพ: ส่งรูปบิล/สลิป แล้วตอบ ยืนยัน หลังตรวจสอบ',
-    '- แก้ไข: แก้ล่าสุด 120, แก้หมวดล่าสุด อาหาร, แก้ชื่อรายการล่าสุด ข้าวเที่ยง',
+    '- แก้ไข: แก้/ลบล่าสุด, แก้ล่าสุด 120, แก้หมวดล่าสุด อาหาร, แก้ชื่อรายการล่าสุด ข้าวเที่ยง',
     '- ลบ: ลบล่าสุด แล้วตอบ ยืนยัน',
     '- สรุป: สรุปวันนี้, สรุปเดือนนี้',
     '- วิเคราะห์: วิเคราะห์เดือนนี้, AI เดือนนี้',

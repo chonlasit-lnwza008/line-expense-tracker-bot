@@ -10,12 +10,12 @@ const COLS = [833, 833, 834];
 const MENU_NAME = process.env.RICH_MENU_NAME || 'LINE Expense Tracker Menu';
 
 const buttons = [
-  { label: 'สรุปวันนี้', hint: 'ยอดวันนี้', message: 'สรุปวันนี้', color: '#0f766e' },
-  { label: 'เดือนนี้', hint: 'ภาพรวมเดือน', message: 'สรุปเดือนนี้', color: '#2563eb' },
-  { label: 'ล่าสุด', hint: 'รายการล่าสุด', message: 'รายการล่าสุด', color: '#7c3aed' },
-  { label: 'ย้อนหลัง', hint: '7 วันล่าสุด', message: 'ย้อนหลัง 7 วัน', color: '#ea580c' },
-  { label: 'วิเคราะห์', hint: 'คำแนะนำ AI', message: 'วิเคราะห์เดือนนี้', color: '#111827' },
-  { label: 'วิธีใช้', hint: 'คำสั่งทั้งหมด', message: 'help', color: '#6b7280' }
+  { label: 'วันนี้', hint: 'สรุปยอด', message: 'สรุปวันนี้', color: '#0f766e' },
+  { label: 'เดือนนี้', hint: 'ภาพรวม', message: 'สรุปเดือนนี้', color: '#2563eb' },
+  { label: 'รายการ', hint: 'ล่าสุด', message: 'รายการล่าสุด', color: '#7c3aed' },
+  { label: 'แก้/ลบ', hint: 'รายการล่าสุด', message: 'แก้/ลบล่าสุด', color: '#ea580c' },
+  { label: 'AI แนะนำ', hint: 'ใช้เงินยังไง', message: 'วิเคราะห์เดือนนี้', color: '#111827' },
+  { label: 'วิธีใช้', hint: 'คำสั่ง', message: 'help', color: '#6b7280' }
 ];
 
 function escapeXml(value) {
