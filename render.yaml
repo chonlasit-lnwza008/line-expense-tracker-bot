@@ -8,10 +8,30 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 22.18.0
+      - key: DB_CLIENT
+        value: postgres
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_SSL
+        value: true
       - key: DATABASE_PATH
         value: ./data/app.db
       - key: IMAGE_STORAGE_PATH
         value: ./uploads
+      - key: DASHBOARD_TOKEN
+        sync: false
+      - key: DASHBOARD_URL
+        sync: false
+      - key: OCR_PROVIDER
+        value: google
+      - key: GOOGLE_VISION_API_KEY
+        sync: false
+      - key: SLIP_VERIFY_PROVIDER
+        value: ghostx
+      - key: GHOSTX_VERIFY_URL
+        value: https://externalauth.ghostxapi.xyz/qr/scan
+      - key: RICH_MENU_NAME
+        value: LINE Expense Tracker Menu
       - key: LINE_CHANNEL_ACCESS_TOKEN
         sync: false
       - key: LINE_CHANNEL_SECRET
