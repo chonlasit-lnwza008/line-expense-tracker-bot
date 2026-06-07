@@ -121,8 +121,10 @@ async function handleText(user, text) {
   }
 
   if (/^(แก้\/ลบล่าสุด|จัดการล่าสุด|แก้รายการล่าสุด)$/.test(trimmed)) {
-    const rows = await transactionService.listTransactionsByDate(user.id, toDateOnly());
-    return buildManageTodayFlex(rows);
+    const start = new Date();
+    start.setDate(start.getDate() - 6);
+    const rows = await transactionService.listTransactionsFromDate(user.id, toDateOnly(start), 50);
+    return buildManageRecentFlex(rows);
   }
 
   const pendingEditReply = await handlePendingEditInput(user, pendingAction, trimmed);
@@ -463,7 +465,7 @@ async function handleEdit(user, text, status) {
     return buildErrorFlex('เติมชื่อใหม่ต่อท้าย', 'ตัวอย่าง: แก้ชื่อ 12 ข้าวเที่ยง');
   }
   if (/^(แก้ล่าสุด|แก้หมวดล่าสุด|แก้ชื่อรายการล่าสุด)$/.test(text)) {
-    return buildErrorFlex('ยังไม่ได้ใส่ค่าที่จะแก้', 'กดเมนู แก้/ลบ เพื่อเลือกรายการวันนี้ หรือพิมพ์ตัวอย่าง: แก้ล่าสุด 120');
+    return buildErrorFlex('ยังไม่ได้ใส่ค่าที่จะแก้', 'กดเมนู แก้/ลบ เพื่อเลือกรายการ 7 วันล่าสุด หรือพิมพ์ตัวอย่าง: แก้ล่าสุด 120');
   }
 
   const amountMatch = text.match(/^แก้ล่าสุด\s+(\d[\d,]*(?:\.\d{1,2})?)$/);
@@ -792,9 +794,9 @@ function buildMonthlyAnalysisFlex(analysis) {
   });
 }
 
-function buildManageTodayFlex(rows) {
+function buildManageRecentFlex(rows) {
   if (!rows.length) {
-    return buildErrorFlex('วันนี้ยังไม่มีรายการให้แก้', 'บันทึกรายการก่อน หรือพิมพ์ รายการล่าสุด เพื่อดูรายการย้อนหลัง');
+    return buildErrorFlex('7 วันล่าสุดยังไม่มีรายการให้แก้', 'บันทึกรายการก่อน หรือพิมพ์ รายการล่าสุด เพื่อดูรายการย้อนหลัง');
   }
 
   const items = rows.slice(0, 10).map((row, index) => {
@@ -839,16 +841,16 @@ function buildManageTodayFlex(rows) {
     };
   });
 
-  return flexMessage('เลือกรายการวันนี้', {
+  return flexMessage('เลือกรายการ 7 วันล่าสุด', {
     type: 'bubble',
     size: 'mega',
-    header: flexHeader('เลือกรายการวันนี้', 'แตะรายการที่ต้องการแก้ไขหรือลบ', '#111827'),
+    header: flexHeader('เลือกรายการ 7 วันล่าสุด', 'แตะรายการที่ต้องการแก้ไขหรือลบ', '#111827'),
     body: {
       type: 'box',
       layout: 'vertical',
       spacing: 'sm',
       contents: [
-        flexText(`พบ ${rows.length} รายการของวันนี้`, { size: 'sm', color: '#4b5563', wrap: true }),
+        flexText(`พบ ${rows.length} รายการในช่วง 7 วันล่าสุด`, { size: 'sm', color: '#4b5563', wrap: true }),
         ...items
       ]
     }
@@ -1194,8 +1196,8 @@ function helpText() {
     '- รายจ่าย: กาแฟ 45, จ่าย ข้าว 60, ซื้อของ 1200 หมวด ของใช้',
     '- รายรับ: รับ เงินเดือน 18000, ได้เงิน 1000',
     '- รูปภาพ: ส่งรูปบิล/สลิป แล้วตอบ ยืนยัน หลังตรวจสอบ',
-    '- แก้ไข: แก้/ลบล่าสุด แล้วกดปุ่มแก้ยอด/แก้หมวด/แก้ชื่อ จากนั้นพิมพ์ค่าใหม่สั้น ๆ',
-    '- ลบ: แก้/ลบล่าสุด แล้วเลือกรายการ หรือพิมพ์ ลบล่าสุด',
+    '- แก้ไข: แก้/ลบล่าสุด เพื่อเลือกรายการ 7 วันล่าสุด แล้วกดแก้ยอด/แก้หมวด/แก้ชื่อ',
+    '- ลบ: แก้/ลบล่าสุด แล้วเลือกรายการ 7 วันล่าสุด หรือพิมพ์ ลบล่าสุด',
     '- สรุป: สรุปวันนี้, สรุปเดือนนี้',
     '- วิเคราะห์: วิเคราะห์เดือนนี้, AI เดือนนี้',
     '- ดูย้อนหลัง: รายการล่าสุด, ย้อนหลัง 7 วัน',
