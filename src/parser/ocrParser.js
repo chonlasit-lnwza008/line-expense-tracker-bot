@@ -40,6 +40,7 @@ function shouldSkipAmountToken(token, line, amount, options = {}, contextLine = 
   if (digitsOnly.length >= 7) return true;
   if (amount > 1000000) return true;
   if (isReferenceLine(line)) return true;
+  if (/[A-Z]/i.test(line) && !hasAmountContext(line)) return true;
   if (isDateOrTimeLine(line)) return true;
   if (!context && !hasDecimal && amount >= 1000) return true;
   return false;
@@ -110,13 +111,13 @@ function extractDate(rawText = '') {
 }
 
 function extractReference(rawText = '') {
-  const match = rawText.match(/(?:ref|reference|เลขที่|อ้างอิง|transaction)\s*[:#]?\s*([A-Z0-9-]{6,})/i);
+  const match = rawText.match(/(?:ref|reference|เลขที่รายการ|เลขที่|อ้างอิง|transaction)\s*[:#]?\s*([A-Z0-9-]{6,})/i);
   return match ? match[1] : null;
 }
 
 function extractMerchant(rawText = '') {
   const lines = rawText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const ignored = /ยอด|รวม|บาท|บท|วันที่|เวลา|ref|เลข|ภาษี|tax|total|amount|จำนวน|จำนวนเงิน|ค่าธรรมเนียม|บัญชี|account|พร้อมเพย์|promptpay|qr payment|ธนาคาร|ธ\.|xxx|สำเร็จ/i;
+  const ignored = /ยอด|รวม|บาท|บท|วันที่|เวลา|ref|เลข|ภาษี|tax|total|amount|จำนวน|จำนวนเงิน|ค่าธรรมเนียม|บัญชี|account|พร้อมเพย์|promptpay|qr payment|ธนาคาร|ธ\.|xxx|สำเร็จ|จ่ายบิล/i;
   const shopKeywords = /ร้าน|ก๋วยเตี๋ยว|กาแฟ|คาเฟ่|ข้าว|อาหาร|ชานม|หมูกระทะ|ตลาด|market|coffee|cafe|restaurant|food|shop|store/i;
 
   const candidates = lines
@@ -131,6 +132,7 @@ function extractMerchant(rawText = '') {
     .map((line, index) => {
       let score = 1;
       if (shopKeywords.test(line)) score += 10;
+      if (/^[A-Z][A-Z0-9 .&-]{2,}$/.test(line)) score += 5;
       if (/(นาย|นาง|น\.ส\.|mr\.|mrs\.|ms\.)/i.test(line)) score -= 2;
       if (index > 0) score += 1;
       return { line, score };
@@ -148,7 +150,7 @@ function detectOcrType(rawText = '') {
 }
 
 function detectSource(rawText = '') {
-  return /(สลิป|โอนเงิน|transfer|promptpay|พร้อมเพย์|ชำระเงินสำเร็จ|เลขที่รายการ|qr payment|ธนาคาร|บัญชี)/i.test(rawText)
+  return /(สลิป|โอนเงิน|transfer|promptpay|พร้อมเพย์|ชำระเงินสำเร็จ|จ่ายบิลสำเร็จ|จ่ายบิล|เลขที่รายการ|qr payment|ธนาคาร|บัญชี)/i.test(rawText)
     ? 'slip'
     : 'receipt_image';
 }

@@ -112,3 +112,31 @@ test('accepts noisy slip amount when baht is misread', () => {
   assert.equal(result.amount, 1400);
   assert.deepEqual(result.amountCandidates.map((item) => item.amount), [1400]);
 });
+
+test('parses KBank bill payment slips and avoids bill references as amounts', () => {
+  const text = [
+    'จ่ายบิลสำเร็จ',
+    '7 มิ.ย. 69 19:08 น.',
+    'นาย ชลสิทธิ์ ท',
+    'ธ.กสิกรไทย',
+    'xxx-x-x9142-x',
+    'HOMEPRO',
+    '000002201363215',
+    '47058140ZOX6NL000000',
+    'เลขที่รายการ:',
+    '016158190829APM01326',
+    'จำนวน:',
+    '289.00 บาท',
+    'ค่าธรรมเนียม:',
+    '0.00 บาท'
+  ].join('\n');
+
+  const result = parseOcrText(text);
+  assert.equal(result.source, 'slip');
+  assert.equal(result.amount, 289);
+  assert.deepEqual(result.amountCandidates.map((item) => item.amount), [289]);
+  assert.equal(result.date, '2026-06-07');
+  assert.equal(result.title, 'HOMEPRO');
+  assert.equal(result.reference, '016158190829APM01326');
+  assert.equal(result.category, 'ของใช้');
+});
