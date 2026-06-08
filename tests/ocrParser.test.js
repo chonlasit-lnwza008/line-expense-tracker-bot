@@ -210,3 +210,25 @@ test('parses noisy bill payment merchant and ignores bill customer numbers', () 
   assert.deepEqual(result.amountCandidates.map((item) => item.amount), [289]);
   assert.equal(result.reference, '016158190829APM01326');
 });
+
+test('rejects suspicious tiny bill amount from customer/reference numbers', () => {
+  const text = [
+    'จ่ายบิลสำเร็จ',
+    '7 มิ.ย. 69 19:08 น.',
+    'HOMEPRO',
+    '000002201363215',
+    '47058140ZOX6NL000000',
+    'เลขที่รายการ:',
+    '016158190829APM01326',
+    'จำนวน:',
+    '2 บาท',
+    'ค่าธรรมเนียม:',
+    '0.00 บาท'
+  ].join('\n');
+
+  const result = parseOcrText(text);
+  assert.equal(result.ok, false);
+  assert.equal(result.amount, null);
+  assert.deepEqual(result.amountCandidates, []);
+  assert.equal(result.title, 'HOMEPRO');
+});

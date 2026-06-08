@@ -124,6 +124,19 @@ function isBillPaymentText(rawText = '') {
   return /(จ่ายบิล|จ่ายบิลสำเร็จ|ชำระบิล|bill payment|pay bill)/i.test(rawText);
 }
 
+function hasBillReferenceNoise(rawText = '') {
+  const lines = rawText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  return lines.some((line) => isLikelyReferenceOrAccount(line))
+    || /(เลขที่รายการ|เลขอ้างอิง|reference|ref)/i.test(rawText);
+}
+
+function isSuspiciousBillAmount(rawText = '', amount) {
+  return isBillPaymentText(rawText)
+    && Number(amount) > 0
+    && Number(amount) < 10
+    && hasBillReferenceNoise(rawText);
+}
+
 function isLikelyReferenceOrAccount(line = '') {
   const compact = line.replace(/\s/g, '');
   const digits = compact.replace(/\D/g, '');
@@ -236,14 +249,15 @@ function parseOcrText(rawText = '') {
   const source = detectSource(rawText);
   const amounts = extractAmounts(rawText, { requireAmountContext: source === 'slip' });
   const selectedAmount = amounts.length === 1 ? amounts[0].amount : null;
+  const suspiciousAmount = isSuspiciousBillAmount(rawText, selectedAmount);
   const merchant = extractMerchant(rawText);
   const type = detectOcrType(rawText);
 
   return {
-    ok: amounts.length > 0,
+    ok: amounts.length > 0 && !suspiciousAmount,
     type,
-    amount: selectedAmount,
-    amountCandidates: amounts.slice(0, 5),
+    amount: suspiciousAmount ? null : selectedAmount,
+    amountCandidates: suspiciousAmount ? [] : amounts.slice(0, 5),
     title: merchant,
     merchant,
     category: detectCategory(rawText, type),

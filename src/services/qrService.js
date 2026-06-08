@@ -2,9 +2,37 @@ const jsQR = require('jsqr');
 const sharp = require('sharp');
 
 async function extractQrData(imagePath) {
-  const { data, info } = await sharp(imagePath)
-    .rotate()
-    .resize({ width: 1400, height: 1400, fit: 'inside', withoutEnlargement: true })
+  const base = sharp(imagePath).rotate();
+  const metadata = await base.metadata();
+  const width = metadata.width || 0;
+  const height = metadata.height || 0;
+  const cropSize = Math.floor(Math.min(width, height) * 0.55);
+  const right = Math.max(0, width - cropSize);
+  const bottom = Math.max(0, height - cropSize);
+
+  const attempts = [
+    () => sharp(imagePath).rotate(),
+    () => sharp(imagePath).rotate().resize({ width: 2200, height: 2200, fit: 'inside', withoutEnlargement: false }),
+    () => sharp(imagePath).rotate().grayscale().normalise(),
+    () => sharp(imagePath).rotate().grayscale().threshold(150),
+    () => cropSize > 0 ? sharp(imagePath).rotate().extract({ left: right, top: bottom, width: cropSize, height: cropSize }) : null,
+    () => cropSize > 0 ? sharp(imagePath).rotate().extract({ left: right, top: bottom, width: cropSize, height: cropSize }).grayscale().normalise() : null,
+    () => cropSize > 0 ? sharp(imagePath).rotate().extract({ left: right, top: bottom, width: cropSize, height: cropSize }).grayscale().threshold(150) : null
+  ];
+
+  for (const createAttempt of attempts) {
+    const data = await decodeWithJsQr(createAttempt());
+    if (data) return data;
+  }
+
+  return null;
+}
+
+async function decodeWithJsQr(pipeline) {
+  if (!pipeline) return null;
+
+  const { data, info } = await pipeline
+    .resize({ width: 1800, height: 1800, fit: 'inside', withoutEnlargement: false })
     .ensureAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
