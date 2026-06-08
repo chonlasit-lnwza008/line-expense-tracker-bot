@@ -1,16 +1,17 @@
 :root {
   color-scheme: light;
-  --bg: #f6f8fb;
+  --bg: #f4f7f6;
   --card: #ffffff;
-  --ink: #1f2937;
-  --muted: #7c8796;
-  --line: #e7eaf0;
-  --blue: #3478f6;
-  --green: #18a566;
-  --red: #e03b45;
-  --teal: #18a99a;
-  --yellow: #f5c451;
-  --shadow: 0 14px 34px rgba(30, 41, 59, 0.08);
+  --ink: #17212f;
+  --muted: #758191;
+  --line: #e2e8ef;
+  --blue: #3772ff;
+  --green: #16a66a;
+  --red: #df3f51;
+  --teal: #12a899;
+  --yellow: #f7c65b;
+  --peach: #ffede2;
+  --shadow: 0 14px 34px rgba(29, 45, 68, 0.09);
 }
 
 * {
@@ -19,7 +20,10 @@
 
 body {
   margin: 0;
-  background: var(--bg);
+  background:
+    radial-gradient(circle at 18px 60px, rgba(247, 198, 91, 0.22), transparent 110px),
+    radial-gradient(circle at 92% 120px, rgba(18, 168, 153, 0.16), transparent 140px),
+    var(--bg);
   color: var(--ink);
   font-family: Arial, "Noto Sans Thai", sans-serif;
 }
@@ -32,7 +36,7 @@ select {
 
 .app {
   min-height: 100vh;
-  padding: 18px 18px 88px;
+  padding: 18px 16px 92px;
 }
 
 .topbar {
@@ -40,7 +44,7 @@ select {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
 .profile {
@@ -51,17 +55,17 @@ select {
 }
 
 .avatar {
-  width: 52px;
-  height: 52px;
+  width: 54px;
+  height: 54px;
   border-radius: 50%;
   object-fit: cover;
   background: linear-gradient(135deg, #fff7ed, #d1fae5);
-  border: 2px solid #ffffff;
+  border: 3px solid #ffffff;
   box-shadow: var(--shadow);
 }
 
 .name {
-  font-size: 20px;
+  font-size: 19px;
   font-weight: 800;
   white-space: nowrap;
   overflow: hidden;
@@ -70,28 +74,49 @@ select {
 
 .date {
   color: var(--muted);
-  font-size: 14px;
+  font-size: 13px;
   margin-top: 3px;
 }
 
 .bell {
   border: 0;
-  background: var(--card);
+  background: #fff8ea;
   color: var(--ink);
   width: 44px;
   height: 44px;
   border-radius: 50%;
   box-shadow: var(--shadow);
-  font-size: 20px;
+  font-size: 18px;
+  font-weight: 900;
 }
 
 .hero {
-  background: linear-gradient(135deg, #0f766e, #2563eb);
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, rgba(15, 118, 110, 0.96), rgba(55, 114, 255, 0.94)),
+    #0f766e;
   color: #ffffff;
-  border-radius: 22px;
-  padding: 18px;
+  border-radius: 24px;
+  padding: 18px 16px 16px;
   box-shadow: var(--shadow);
   margin-bottom: 18px;
+}
+
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: -80px -50px auto auto;
+  width: 190px;
+  height: 190px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.13);
+}
+
+.hero-copy {
+  position: relative;
+  z-index: 1;
+  max-width: 68%;
 }
 
 .hero-label {
@@ -101,8 +126,95 @@ select {
 }
 
 .net {
-  font-size: 34px;
+  font-size: 32px;
   line-height: 1.1;
+  font-weight: 900;
+}
+
+.hero-note {
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.mascot {
+  position: absolute;
+  right: 14px;
+  top: 18px;
+  width: 92px;
+  height: 92px;
+  display: grid;
+  place-items: center;
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.cat-face {
+  position: relative;
+  width: 64px;
+  height: 58px;
+  border-radius: 24px 24px 22px 22px;
+  background: #fff7ed;
+  border: 3px solid #17212f;
+}
+
+.cat-ear {
+  position: absolute;
+  top: -15px;
+  width: 25px;
+  height: 25px;
+  background: #fff7ed;
+  border: 3px solid #17212f;
+  transform: rotate(45deg);
+  border-radius: 4px;
+}
+
+.cat-ear.left { left: 7px; }
+.cat-ear.right { right: 7px; }
+
+.cat-eye {
+  position: absolute;
+  top: 23px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #17212f;
+}
+
+.cat-eye.left { left: 19px; }
+.cat-eye.right { right: 19px; }
+
+.cat-mouth {
+  position: absolute;
+  left: 28px;
+  top: 34px;
+  width: 8px;
+  height: 8px;
+  border-bottom: 3px solid #17212f;
+  border-radius: 50%;
+}
+
+.cat-coin {
+  position: absolute;
+  right: -10px;
+  bottom: -9px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--yellow);
+  border: 3px solid #ffffff;
+  box-shadow: 0 5px 12px rgba(17, 24, 39, 0.18);
+}
+
+.cat-coin::after {
+  content: "B";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #8a5a00;
+  font-size: 12px;
   font-weight: 900;
 }
 
@@ -110,14 +222,16 @@ select {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 10px;
-  margin-top: 16px;
+  position: relative;
+  z-index: 1;
+  margin-top: 18px;
 }
 
 .summary-pill {
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.18);
   border: 1px solid rgba(255, 255, 255, 0.24);
-  border-radius: 14px;
-  padding: 10px;
+  border-radius: 16px;
+  padding: 10px 8px;
 }
 
 .summary-pill span {
@@ -129,7 +243,8 @@ select {
 .summary-pill strong {
   display: block;
   margin-top: 4px;
-  font-size: 16px;
+  font-size: 14px;
+  white-space: nowrap;
 }
 
 .section-title {
@@ -148,25 +263,35 @@ select {
   color: var(--muted);
 }
 
+.text-action {
+  border: 0;
+  border-radius: 999px;
+  background: #e8f6f2;
+  color: #0f766e;
+  font-size: 12px;
+  font-weight: 900;
+  padding: 8px 11px;
+}
+
 .menu-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 13px;
+  gap: 12px;
 }
 
 .menu-card {
-  border: 0;
+  border: 1px solid rgba(226, 232, 239, 0.72);
   background: var(--card);
-  min-height: 128px;
-  border-radius: 20px;
-  padding: 12px 8px;
+  min-height: 132px;
+  border-radius: 22px;
+  padding: 12px 7px;
   box-shadow: var(--shadow);
   color: var(--ink);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .menu-card:active {
@@ -174,14 +299,15 @@ select {
 }
 
 .icon {
-  width: 58px;
-  height: 58px;
-  border-radius: 18px;
+  width: 60px;
+  height: 60px;
+  border-radius: 20px;
   display: grid;
   place-items: center;
   color: #ffffff;
   font-weight: 900;
-  font-size: 24px;
+  font-size: 15px;
+  box-shadow: inset 0 -10px 18px rgba(0, 0, 0, 0.08);
 }
 
 .icon.expense { background: linear-gradient(135deg, #e03b45, #f97316); }
@@ -192,14 +318,22 @@ select {
 .icon.edit { background: linear-gradient(135deg, #f5c451, #ea580c); }
 
 .menu-card span {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 800;
   text-align: center;
   line-height: 1.25;
 }
 
+.menu-card small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
 .panel {
   background: var(--card);
+  border: 1px solid rgba(226, 232, 239, 0.72);
   border-radius: 22px;
   padding: 16px;
   box-shadow: var(--shadow);
@@ -212,7 +346,7 @@ select {
 
 .bar-row {
   display: grid;
-  grid-template-columns: 86px 1fr 82px;
+  grid-template-columns: minmax(66px, 86px) 1fr minmax(70px, 82px);
   align-items: center;
   gap: 10px;
   font-size: 13px;
@@ -226,7 +360,7 @@ select {
 }
 
 .bar-track {
-  height: 12px;
+  height: 13px;
   background: #edf2f7;
   border-radius: 999px;
   overflow: hidden;
@@ -236,7 +370,7 @@ select {
   height: 100%;
   min-width: 8px;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--teal), var(--blue));
+  background: linear-gradient(90deg, var(--green), var(--teal));
 }
 
 .bar-amount {
@@ -254,9 +388,10 @@ select {
   grid-template-columns: 1fr auto;
   gap: 8px;
   align-items: center;
-  padding: 12px;
+  padding: 12px 10px 12px 12px;
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: 18px;
+  background: #fbfcfe;
 }
 
 .tx-title {
@@ -274,6 +409,22 @@ select {
   white-space: nowrap;
 }
 
+.tx-side {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+}
+
+.mini-action {
+  border: 0;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #4b5563;
+  font-size: 11px;
+  font-weight: 900;
+  padding: 6px 9px;
+}
+
 .income-text { color: var(--green); }
 .expense-text { color: var(--red); }
 
@@ -288,10 +439,10 @@ select {
   left: 0;
   right: 0;
   bottom: 0;
-  height: 70px;
+  height: 74px;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  background: rgba(255, 255, 255, 0.94);
+  background: rgba(255, 255, 255, 0.96);
   border-top: 1px solid var(--line);
   backdrop-filter: blur(12px);
   padding-bottom: env(safe-area-inset-bottom);
@@ -302,6 +453,7 @@ select {
   background: transparent;
   color: var(--muted);
   font-weight: 800;
+  font-size: 13px;
 }
 
 .tabbar button.active {
@@ -327,6 +479,7 @@ select {
   background: #ffffff;
   border-radius: 22px;
   padding: 18px;
+  box-shadow: 0 -10px 30px rgba(15, 23, 42, 0.14);
 }
 
 .sheet h3 {
@@ -350,7 +503,7 @@ select {
 .primary,
 .secondary {
   border: 0;
-  border-radius: 14px;
+  border-radius: 16px;
   padding: 13px;
   font-weight: 900;
 }

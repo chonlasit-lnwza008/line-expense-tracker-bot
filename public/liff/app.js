@@ -80,6 +80,8 @@ async function loadOverview() {
 
 function render() {
   const data = state.data;
+  const topCategory = data.categories[0] ? data.categories[0].category : 'ยังไม่มีหมวดเด่น';
+  const todayNet = data.todayTotals.net;
   document.getElementById('app').innerHTML = `
     <main class="app">
       <section class="topbar">
@@ -94,8 +96,21 @@ function render() {
       </section>
 
       <section class="hero">
-        <div class="hero-label">คงเหลือสุทธิเดือนนี้</div>
-        <div class="net">${formatMoney(data.totals.net)}</div>
+        <div class="hero-copy">
+          <div class="hero-label">คงเหลือสุทธิเดือนนี้</div>
+          <div class="net">${formatMoney(data.totals.net)}</div>
+          <div class="hero-note">${todayNet >= 0 ? 'วันนี้ยังคุมงบได้ดี' : 'วันนี้รายจ่ายมากกว่ารายรับ'} · ${escapeHtml(topCategory)}</div>
+        </div>
+        <div class="mascot" aria-hidden="true">
+          <div class="cat-face">
+            <span class="cat-ear left"></span>
+            <span class="cat-ear right"></span>
+            <span class="cat-eye left"></span>
+            <span class="cat-eye right"></span>
+            <span class="cat-mouth"></span>
+            <span class="cat-coin"></span>
+          </div>
+        </div>
         <div class="summary-grid">
           <div class="summary-pill"><span>รายรับ</span><strong>${formatMoney(data.totals.income)}</strong></div>
           <div class="summary-pill"><span>รายจ่าย</span><strong>${formatMoney(data.totals.expense)}</strong></div>
@@ -108,12 +123,12 @@ function render() {
         <small>${escapeHtml(data.month)}</small>
       </section>
       <section class="menu-grid">
-        ${menuCard('expense', '-', 'บันทึกรายจ่าย', 'open-expense')}
-        ${menuCard('income', '+', 'บันทึกรายรับ', 'open-income')}
-        ${menuCard('slip', 'QR', 'ส่งสลิป/บิล', 'slip-help')}
-        ${menuCard('today', 'D', 'สรุปวันนี้', 'สรุปวันนี้')}
-        ${menuCard('chart', 'G', 'กราฟรายจ่าย', 'scroll-chart')}
-        ${menuCard('edit', 'E', 'แก้ไข 7 วัน', 'scroll-edit')}
+        ${menuCard('expense', 'จ่าย', 'บันทึกรายจ่าย', 'พิมพ์ไว', 'open-expense')}
+        ${menuCard('income', 'รับ', 'บันทึกรายรับ', 'เงินเข้า', 'open-income')}
+        ${menuCard('slip', 'สลิป', 'ส่งสลิป/บิล', 'ตรวจ QR', 'slip-help')}
+        ${menuCard('today', 'วันนี้', 'สรุปวันนี้', 'ยอดรวม', 'สรุปวันนี้')}
+        ${menuCard('chart', 'กราฟ', 'กราฟรายจ่าย', 'ตามหมวด', 'scroll-chart')}
+        ${menuCard('edit', 'แก้', 'แก้ไข 7 วัน', 'รายการล่าสุด', 'scroll-edit')}
       </section>
 
       <section id="chart" class="section-title">
@@ -126,7 +141,7 @@ function render() {
 
       <section id="edit" class="section-title">
         <h2>รายการย้อนหลัง 7 วัน</h2>
-        <small>ดูและเลือกแก้ในแชท</small>
+        <button class="text-action" type="button" data-command="แก้/ลบล่าสุด">เปิดตัวเลือก</button>
       </section>
       <section class="panel">
         ${renderTransactions(data.recentSevenDays)}
@@ -155,7 +170,7 @@ function render() {
   bindEvents();
 }
 
-function menuCard(iconClass, iconText, label, action) {
+function menuCard(iconClass, iconText, label, hint, action) {
   const attr = action.startsWith('scroll-')
     ? `data-scroll="${action.replace('scroll-', '')}"`
     : action.startsWith('open-')
@@ -165,6 +180,7 @@ function menuCard(iconClass, iconText, label, action) {
     <button class="menu-card" type="button" ${attr}>
       <div class="icon ${iconClass}">${escapeHtml(iconText)}</div>
       <span>${escapeHtml(label)}</span>
+      <small>${escapeHtml(hint)}</small>
     </button>
   `;
 }
@@ -201,7 +217,10 @@ function renderTransactions(rows) {
               <div class="tx-title">${escapeHtml(row.title)}</div>
               <div class="tx-meta">${escapeHtml(row.displayDate)} · ${escapeHtml(row.category)}</div>
             </div>
-            <div class="tx-amount ${typeClass}">${sign}${formatMoney(row.amount)}</div>
+            <div class="tx-side">
+              <div class="tx-amount ${typeClass}">${sign}${formatMoney(row.amount)}</div>
+              <button type="button" data-command="แก้/ลบล่าสุด" class="mini-action">จัดการ</button>
+            </div>
           </div>
         `;
       }).join('')}
@@ -264,12 +283,7 @@ async function handleCommand(command) {
 }
 
 async function sendChatText(text) {
-  if (window.liff && liff.isInClient() && liff.isApiAvailable('shareTargetPicker')) {
-    await liff.sendMessages([{ type: 'text', text }]);
-    alert('ส่งคำสั่งเข้าแชทแล้ว');
-    return;
-  }
-  if (window.liff && liff.isInClient()) {
+  if (window.liff && liff.isInClient() && typeof liff.sendMessages === 'function') {
     await liff.sendMessages([{ type: 'text', text }]);
     alert('ส่งคำสั่งเข้าแชทแล้ว');
     return;
