@@ -144,8 +144,9 @@ function extractMerchant(rawText = '') {
 
 function detectOcrType(rawText = '') {
   const text = rawText.toLowerCase();
-  if (/(รับเงิน|เงินเข้า|received|ได้เงิน)/i.test(text)) return 'income';
+  if (/(จ่ายบิล|ชำระเงิน|qr payment|promptpay|พร้อมเพย์|ค่าธรรมเนียม|เลขที่รายการ|payment|paid)/i.test(text)) return 'expense';
   if (/(โอนเงิน|transfer)/i.test(text)) return 'transfer';
+  if (/(รับเงิน|เงินเข้า|received|ได้เงิน)/i.test(text)) return 'income';
   return 'expense';
 }
 

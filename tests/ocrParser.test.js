@@ -140,3 +140,43 @@ test('parses KBank bill payment slips and avoids bill references as amounts', ()
   assert.equal(result.reference, '016158190829APM01326');
   assert.equal(result.category, 'ของใช้');
 });
+
+test('keeps Boonterm payment slips as expenses even when OCR contains receive wording', () => {
+  const text = [
+    'ชำระเงินสำเร็จ',
+    '7 มิ.ย. 69 20:10 น.',
+    'บุญเติม',
+    'ตู้รับเงิน',
+    'รับเงินจากลูกค้า',
+    'เลขที่รายการ: 016158201000ABC12345',
+    'จำนวนเงิน',
+    '100.00 บาท',
+    'ค่าธรรมเนียม 0.00 บาท'
+  ].join('\n');
+
+  const result = parseOcrText(text);
+  assert.equal(result.source, 'slip');
+  assert.equal(result.type, 'expense');
+  assert.equal(result.amount, 100);
+  assert.equal(result.category, 'บิลประจำ');
+});
+
+test('keeps Tao Bin payment slips as expenses even when OCR contains receive wording', () => {
+  const text = [
+    'ชำระเงินสำเร็จ',
+    '7 มิ.ย. 69 20:15 น.',
+    'TAO BIN เต่าบิน',
+    'เครื่องรับเงินอัตโนมัติ',
+    'รับเงิน',
+    'เลขที่รายการ: 016158201500ABC12345',
+    'จำนวนเงิน',
+    '45.00 บาท',
+    'ค่าธรรมเนียม 0.00 บาท'
+  ].join('\n');
+
+  const result = parseOcrText(text);
+  assert.equal(result.source, 'slip');
+  assert.equal(result.type, 'expense');
+  assert.equal(result.amount, 45);
+  assert.equal(result.category, 'อาหาร');
+});
