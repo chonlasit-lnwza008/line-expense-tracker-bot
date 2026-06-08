@@ -99,7 +99,7 @@ function render() {
         <div class="hero-copy">
           <div class="hero-label">คงเหลือสุทธิเดือนนี้</div>
           <div class="net">${formatMoney(data.totals.net)}</div>
-          <div class="hero-note">${todayNet >= 0 ? 'วันนี้ยังคุมงบได้ดี' : 'วันนี้รายจ่ายมากกว่ารายรับ'} · ${escapeHtml(topCategory)}</div>
+          <div class="hero-note">${todayNet >= 0 ? '😺 วันนี้ยังคุมงบได้ดี' : '🙀 วันนี้รายจ่ายมากกว่ารายรับ'} · ${escapeHtml(topCategory)}</div>
         </div>
         <div class="mascot" aria-hidden="true">
           <div class="cat-face">
@@ -158,10 +158,11 @@ function render() {
     <div id="quickModal" class="modal">
       <form class="sheet" id="quickForm">
         <h3 id="modalTitle">บันทึกรายจ่าย</h3>
+        <p class="sheet-hint" id="modalHint">พิมพ์รายการแล้วส่งเข้าแชทเพื่อให้บอทบันทึกให้</p>
         <input id="quickText" autocomplete="off" placeholder="เช่น กาแฟ 45">
         <div class="sheet-actions">
           <button class="secondary" type="button" id="closeModal">ยกเลิก</button>
-          <button class="primary" type="submit">ส่งเข้าแชท</button>
+          <button class="primary" type="submit" id="submitBtn">ส่งเข้าแชท</button>
         </div>
       </form>
     </div>
@@ -188,15 +189,19 @@ function menuCard(iconClass, iconText, label, hint, action) {
 function renderCategoryBars(categories) {
   if (!categories.length) return '<div class="empty">ยังไม่มีรายจ่ายเดือนนี้</div>';
   const max = Math.max(...categories.map((item) => Number(item.amount)), 1);
+  const total = categories.reduce((sum, item) => sum + Number(item.amount || 0), 0) || 1;
   return `
     <div class="chart-list">
-      ${categories.map((item) => {
-        const width = Math.max(8, (Number(item.amount) / max) * 100);
+      ${categories.map((item, index) => {
+        const amount = Number(item.amount || 0);
+        const width = Math.max(8, (amount / max) * 100);
+        const pct = Math.round((amount / total) * 100);
+        const colorClass = `c${index % 6}`;
         return `
           <div class="bar-row">
             <div class="bar-label">${escapeHtml(item.category)}</div>
-            <div class="bar-track"><div class="bar-fill" style="width:${width}%"></div></div>
-            <div class="bar-amount">${formatMoney(item.amount)}</div>
+            <div class="bar-amount">${formatMoney(item.amount)}<span class="bar-pct">${pct}%</span></div>
+            <div class="bar-track"><div class="bar-fill ${colorClass}" style="width:${width}%"></div></div>
           </div>
         `;
       }).join('')}
@@ -209,12 +214,17 @@ function renderTransactions(rows) {
   return `
     <div class="transaction-list">
       ${rows.map((row) => {
-        const typeClass = row.type === 'income' ? 'income-text' : 'expense-text';
-        const sign = row.type === 'income' ? '+' : '-';
+        const isIncome = row.type === 'income';
+        const typeClass = isIncome ? 'income-text' : 'expense-text';
+        const sign = isIncome ? '+' : '-';
+        const badgeLabel = isIncome ? 'รับ' : 'จ่าย';
         return `
           <div class="tx">
             <div>
-              <div class="tx-title">${escapeHtml(row.title)}</div>
+              <div class="tx-title">
+                <span class="tx-badge ${isIncome ? 'income' : 'expense'}">${badgeLabel}</span>
+                <span>${escapeHtml(row.title)}</span>
+              </div>
               <div class="tx-meta">${escapeHtml(row.displayDate)} · ${escapeHtml(row.category)}</div>
             </div>
             <div class="tx-side">
@@ -263,9 +273,18 @@ function scrollToSection(id) {
 
 function openQuickModal(type) {
   state.modalType = type;
-  document.getElementById('modalTitle').textContent = type === 'income' ? 'บันทึกรายรับ' : 'บันทึกรายจ่าย';
-  document.getElementById('quickText').placeholder = type === 'income' ? 'เช่น เงินเดือน 18000' : 'เช่น กาแฟ 45';
+  const isIncome = type === 'income';
+  document.getElementById('modalTitle').textContent = isIncome ? 'บันทึกรายรับ' : 'บันทึกรายจ่าย';
+  document.getElementById('modalHint').textContent = isIncome
+    ? 'พิมพ์รายรับแล้วส่งเข้าแชทเพื่อให้บอทบันทึกให้'
+    : 'พิมพ์รายจ่ายแล้วส่งเข้าแชทเพื่อให้บอทบันทึกให้';
+  document.getElementById('quickText').placeholder = isIncome ? 'เช่น เงินเดือน 18000' : 'เช่น กาแฟ 45';
   document.getElementById('quickText').value = '';
+
+  const submitBtn = document.getElementById('submitBtn');
+  submitBtn.textContent = isIncome ? 'บันทึกรายรับ' : 'บันทึกรายจ่าย';
+  submitBtn.classList.toggle('expense', !isIncome);
+
   document.getElementById('quickModal').classList.add('open');
   setTimeout(() => document.getElementById('quickText').focus(), 50);
 }
