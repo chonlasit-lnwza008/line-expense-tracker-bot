@@ -337,7 +337,8 @@ async function handleImage(user, messageId) {
   const stream = await lineService.getMessageContent(messageId);
   const imagePath = await storageService.saveLineImageStream(stream, messageId);
 
-  const verifiedSlip = await verifySlipFromQr(imagePath);
+  const qrData = await extractQrDataSafe(imagePath);
+  const verifiedSlip = await verifySlipFromQrData(qrData);
   if (verifiedSlip) {
     const tx = await transactionService.createTransaction(user.id, { ...verifiedSlip, imagePath }, 'pending');
     return buildPendingFlex(tx, { heading: 'ตรวจสอบสลิปจาก QR' });
@@ -350,6 +351,22 @@ async function handleImage(user, messageId) {
   }
 
   const parsed = parseOcrText(rawText);
+  const qrPayment = qrService.parseQrPaymentData(qrData);
+  if (qrPayment?.amount) {
+    parsed.ok = true;
+    parsed.amount = qrPayment.amount;
+    parsed.amountCandidates = [{ amount: qrPayment.amount, line: 'qr payment amount', score: 20 }];
+    parsed.note = [
+      parsed.note,
+      'amount verified from QR',
+      qrPayment.reference ? `qr ref: ${qrPayment.reference}` : null
+    ].filter(Boolean).join('\n');
+  }
+  if (qrPayment?.merchant && (!parsed.title || parsed.title === 'รายการจากรูปภาพ')) {
+    parsed.title = qrPayment.merchant;
+    parsed.merchant = qrPayment.merchant;
+  }
+
   if (!parsed.ok) {
     return buildErrorFlex('ยังหาเงินจากสลิปไม่ได้', 'OCR อ่านข้อความได้ แต่ยังไม่เจอยอดที่มั่นใจ กรุณาพิมพ์ยอดเอง เช่น "กาแฟ 45"');
   }
@@ -374,6 +391,25 @@ async function handleImage(user, messageId) {
 async function verifySlipFromQr(imagePath) {
   try {
     const qrData = await qrService.extractQrData(imagePath);
+    if (!qrData) return null;
+    return await slipVerificationService.verifyQrData(qrData);
+  } catch (error) {
+    console.error('Slip QR verification failed, falling back to OCR:', error.message);
+    return null;
+  }
+}
+
+async function extractQrDataSafe(imagePath) {
+  try {
+    return await qrService.extractQrData(imagePath);
+  } catch (error) {
+    console.error('QR extraction failed:', error.message);
+    return null;
+  }
+}
+
+async function verifySlipFromQrData(qrData) {
+  try {
     if (!qrData) return null;
     return await slipVerificationService.verifyQrData(qrData);
   } catch (error) {
