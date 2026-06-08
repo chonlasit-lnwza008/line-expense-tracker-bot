@@ -5,6 +5,11 @@ const { toDateOnly } = require('../utils/dateUtils');
 const totalKeywords = ['ยอดรวม', 'รวม', 'total', 'amount', 'จำนวน', 'จำนวนเงิน', 'ยอดเงิน', 'สุทธิ'];
 const amountContextKeywords = ['บาท', 'บท', 'บ.', '฿', 'ยอด', 'รวม', 'จำนวน', 'จำนวนเงิน', 'ยอดเงิน', 'สุทธิ', 'total', 'amount', 'thb'];
 const referenceKeywords = ['เลขที่รายการ', 'เลขอ้างอิง', 'อ้างอิง', 'reference', 'ref', 'transaction', 'บัญชี', 'account'];
+const knownMerchants = [
+  { title: 'HOMEPRO', pattern: /home\s*pro|homepro|โฮมโปร/i },
+  { title: 'บุญเติม', pattern: /บุญเติม|boonterm/i },
+  { title: 'เต่าบิน', pattern: /เต่าบิน|tao\s*bin|taobin/i }
+];
 
 function hasAmountContext(line) {
   const lower = line.toLowerCase();
@@ -115,8 +120,79 @@ function extractReference(rawText = '') {
   return match ? match[1] : null;
 }
 
+function isBillPaymentText(rawText = '') {
+  return /(จ่ายบิล|จ่ายบิลสำเร็จ|ชำระบิล|bill payment|pay bill)/i.test(rawText);
+}
+
+function isLikelyReferenceOrAccount(line = '') {
+  const compact = line.replace(/\s/g, '');
+  const digits = compact.replace(/\D/g, '');
+  if (/x{2,}|xxx|[xX]-[xX]/.test(compact)) return true;
+  if (digits.length >= 7) return true;
+  if (/^[A-Z0-9-]{8,}$/i.test(compact)) return true;
+  if (/[A-Z0-9]{6,}/i.test(compact) && digits.length >= 4) return true;
+  return false;
+}
+
+function isLikelyPersonOrBank(line = '') {
+  return /(นาย|นาง|น\.ส\.|mr\.|mrs\.|ms\.|ธนาคาร|ธ\.|bank|kasikorn|kbank|scb|ktb|bbl|bay|gsb|promptpay|พร้อมเพย์)/i.test(line);
+}
+
+function cleanMerchantLine(line = '') {
+  return line
+    .replace(/^(ร้าน|บริษัท|บจก\.?|จำกัด)\s+/i, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+function findKnownMerchant(rawText = '') {
+  const found = knownMerchants.find((merchant) => merchant.pattern.test(rawText));
+  return found ? found.title : null;
+}
+
+function extractBillMerchant(lines = [], rawText = '') {
+  const known = findKnownMerchant(rawText);
+  if (known) return known;
+
+  const ignored = /ยอด|รวม|บาท|บท|วันที่|เวลา|ref|เลข|ภาษี|tax|total|amount|จำนวน|จำนวนเงิน|ค่าธรรมเนียม|บัญชี|account|พร้อมเพย์|promptpay|qr payment|สำเร็จ|จ่ายบิล|ชำระบิล|customer|invoice|reference/i;
+  const scored = lines
+    .map((line, index) => ({ line: cleanMerchantLine(line), index }))
+    .filter(({ line }) => {
+      if (line.length < 2) return false;
+      if (ignored.test(line)) return false;
+      if (isDateOrTimeLine(line)) return false;
+      if (isLikelyReferenceOrAccount(line)) return false;
+      if (isLikelyPersonOrBank(line)) return false;
+      if (/^\d[\d,]*(?:\.\d{1,2})?$/.test(line)) return false;
+      return true;
+    })
+    .map(({ line, index }) => {
+      const previous = [lines[index - 3], lines[index - 2], lines[index - 1]].filter(Boolean).join(' ');
+      const next = [lines[index + 1], lines[index + 2], lines[index + 3]].filter(Boolean).join(' ');
+      let score = 1;
+      if (/^[A-Z][A-Z0-9 .&-]{2,}$/.test(line)) score += 12;
+      if (/[ก-๙]{2,}/.test(line)) score += 8;
+      if (isLikelyReferenceOrAccount(previous)) score += 8;
+      if (/เลข|จำนวน|บาท|ค่าธรรมเนียม|reference|amount/i.test(next)) score += 5;
+      if (/\d/.test(line)) score -= 4;
+      if (line.length > 40) score -= 4;
+      return { line, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  return scored[0]?.line || null;
+}
+
 function extractMerchant(rawText = '') {
   const lines = rawText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const knownMerchant = findKnownMerchant(rawText);
+  if (knownMerchant) return knownMerchant;
+
+  if (isBillPaymentText(rawText)) {
+    const billMerchant = extractBillMerchant(lines, rawText);
+    if (billMerchant) return billMerchant;
+  }
+
   const ignored = /ยอด|รวม|บาท|บท|วันที่|เวลา|ref|เลข|ภาษี|tax|total|amount|จำนวน|จำนวนเงิน|ค่าธรรมเนียม|บัญชี|account|พร้อมเพย์|promptpay|qr payment|ธนาคาร|ธ\.|xxx|สำเร็จ|จ่ายบิล/i;
   const shopKeywords = /ร้าน|ก๋วยเตี๋ยว|กาแฟ|คาเฟ่|ข้าว|อาหาร|ชานม|หมูกระทะ|ตลาด|market|coffee|cafe|restaurant|food|shop|store/i;
 
@@ -126,7 +202,7 @@ function extractMerchant(rawText = '') {
       if (ignored.test(line)) return false;
       if (isDateOrTimeLine(line)) return false;
       if (/^\d[\d,]*(?:\.\d{1,2})?$/.test(line)) return false;
-      if (/^[A-Z0-9-]{8,}$/i.test(line.replace(/\s/g, ''))) return false;
+      if (isLikelyReferenceOrAccount(line)) return false;
       return true;
     })
     .map((line, index) => {

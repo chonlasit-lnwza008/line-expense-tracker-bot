@@ -157,6 +157,7 @@ test('keeps Boonterm payment slips as expenses even when OCR contains receive wo
   const result = parseOcrText(text);
   assert.equal(result.source, 'slip');
   assert.equal(result.type, 'expense');
+  assert.equal(result.title, 'บุญเติม');
   assert.equal(result.amount, 100);
   assert.equal(result.category, 'บิลประจำ');
 });
@@ -177,6 +178,35 @@ test('keeps Tao Bin payment slips as expenses even when OCR contains receive wor
   const result = parseOcrText(text);
   assert.equal(result.source, 'slip');
   assert.equal(result.type, 'expense');
+  assert.equal(result.title, 'เต่าบิน');
   assert.equal(result.amount, 45);
   assert.equal(result.category, 'อาหาร');
+});
+
+test('parses noisy bill payment merchant and ignores bill customer numbers', () => {
+  const text = [
+    'จ่ายบิลสำเร็จ',
+    '7 มิ.ย. 69 19:08 น.',
+    'นาย ชลสิทธิ์ ท',
+    'ธ.กสิกรไทย',
+    'xxx-x-x9142-x',
+    'HOME PRO',
+    '000002201363215',
+    '47058140ZOX6NL000000',
+    'เลขที่รายการ:',
+    '016158190829APM01326',
+    'จำนวน:',
+    '289.00',
+    'บาท',
+    'ค่าธรรมเนียม:',
+    '0.00 บาท'
+  ].join('\n');
+
+  const result = parseOcrText(text);
+  assert.equal(result.source, 'slip');
+  assert.equal(result.type, 'expense');
+  assert.equal(result.title, 'HOMEPRO');
+  assert.equal(result.amount, 289);
+  assert.deepEqual(result.amountCandidates.map((item) => item.amount), [289]);
+  assert.equal(result.reference, '016158190829APM01326');
 });
