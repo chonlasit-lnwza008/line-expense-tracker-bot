@@ -116,6 +116,30 @@ https://your-render-url.onrender.com/dashboard?token=your-dashboard-password
 
 The dashboard shows monthly income, expense, net balance, category chart, daily chart, and recent confirmed transactions from Supabase.
 
+## LIFF App in LINE
+
+The chat bot still works the same way. The LIFF app adds a mobile dashboard inside LINE:
+
+```text
+https://your-render-url.onrender.com/liff
+```
+
+Setup in LINE Developers:
+
+1. Open the same Provider as the bot
+2. Create or open a LINE Login channel
+3. Open the LIFF tab and click Add
+4. Set Endpoint URL to `https://your-render-url.onrender.com/liff`
+5. Select the `profile` scope
+6. Copy the LIFF ID to Render Environment Variables:
+
+```env
+LIFF_ID=your-liff-id
+LIFF_URL=https://your-render-url.onrender.com/liff
+```
+
+The LIFF page shows monthly totals, spending by category, recent 7-day transactions, and quick buttons that send normal bot commands back into the chat.
+
 ## LINE Rich Menu
 
 ตั้งค่า `LINE_CHANNEL_ACCESS_TOKEN` และถ้าต้องการปุ่ม Dashboard ให้ตั้ง `DASHBOARD_URL` ก่อน จากนั้นรัน:

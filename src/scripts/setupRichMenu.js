@@ -8,10 +8,11 @@ const HEIGHT = 1686;
 const ROW_HEIGHT = 843;
 const COLS = [833, 833, 834];
 const MENU_NAME = process.env.RICH_MENU_NAME || 'LINE Expense Tracker Menu';
+const APP_URL = process.env.LIFF_URL || process.env.DASHBOARD_URL || '';
 
 const buttons = [
   { label: 'วันนี้', hint: 'สรุปยอด', message: 'สรุปวันนี้', color: '#0f766e', icon: 'calendar' },
-  { label: 'เดือนนี้', hint: 'ภาพรวม', message: 'สรุปเดือนนี้', color: '#2563eb', icon: 'chart' },
+  { label: 'หน้าหลัก', hint: 'ดูกราฟ', message: 'dashboard', uri: APP_URL, color: '#2563eb', icon: 'chart' },
   { label: 'รายการ', hint: 'ล่าสุด', message: 'รายการล่าสุด', color: '#7c3aed', icon: 'list' },
   { label: 'แก้/ลบ', hint: 'เลือกจากวันนี้', message: 'แก้/ลบล่าสุด', color: '#ea580c', icon: 'edit' },
   { label: 'AI แนะนำ', hint: 'ใช้เงินยังไง', message: 'วิเคราะห์เดือนนี้', color: '#111827', icon: 'spark' },
@@ -34,7 +35,9 @@ function buttonAreas() {
       const index = row * 3 + col;
       areas.push({
         bounds: { x, y: row * ROW_HEIGHT, width: COLS[col], height: ROW_HEIGHT },
-        action: { type: 'message', text: buttons[index].message }
+        action: buttons[index].uri
+          ? { type: 'uri', uri: buttons[index].uri }
+          : { type: 'message', text: buttons[index].message }
       });
       x += COLS[col];
     }

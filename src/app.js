@@ -1,9 +1,11 @@
 require('dotenv').config();
 
 const express = require('express');
+const path = require('path');
 const webhookRouter = require('./routes/webhook');
 const db = require('./config/database');
 const dashboardService = require('./services/dashboardService');
+const liffDashboardService = require('./services/liffDashboardService');
 const { ensureDatabase } = require('./database/migrations');
 
 const app = express();
@@ -75,6 +77,28 @@ app.get('/dashboard', (req, res) => {
   res.type('html').send(renderDashboardPage(String(req.query.token || '')));
 });
 
+app.use('/liff-assets', express.static(path.join(__dirname, '..', 'public', 'liff')));
+
+app.get('/liff', (req, res) => {
+  res.type('html').send(renderLiffPage({
+    liffId: process.env.LIFF_ID || '',
+    dashboardToken: req.query.token && canViewDashboard(req) ? String(req.query.token) : '',
+    debugLineUserId: req.query.lineUserId && canViewDashboard(req) ? String(req.query.lineUserId) : ''
+  }));
+});
+
+app.get('/api/liff/overview', async (req, res, next) => {
+  try {
+    const lineUserId = await resolveLiffLineUserId(req);
+    res.json(await liffDashboardService.getOverview(lineUserId, req.query.month));
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+    next(error);
+  }
+});
+
 app.use('/webhook', webhookRouter);
 
 app.use((err, req, res, next) => {
@@ -98,6 +122,62 @@ if (require.main === module) {
 
 module.exports = app;
 module.exports.start = start;
+
+async function resolveLiffLineUserId(req) {
+  if (canViewDashboard(req) && req.query.lineUserId) {
+    return String(req.query.lineUserId);
+  }
+
+  const authHeader = req.get('authorization') || '';
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  if (!match) {
+    const error = new Error('Missing LIFF access token');
+    error.statusCode = 401;
+    throw error;
+  }
+
+  const response = await fetch('https://api.line.me/v2/profile', {
+    headers: { Authorization: `Bearer ${match[1]}` }
+  });
+
+  if (!response.ok) {
+    const error = new Error('Invalid LIFF access token');
+    error.statusCode = 401;
+    throw error;
+  }
+
+  const profile = await response.json();
+  if (!profile.userId) {
+    const error = new Error('LINE profile has no userId');
+    error.statusCode = 401;
+    throw error;
+  }
+  return profile.userId;
+}
+
+function renderLiffPage({ liffId, dashboardToken, debugLineUserId }) {
+  return `<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>LINE Expense Tracker</title>
+  <link rel="stylesheet" href="/liff-assets/app.css">
+</head>
+<body>
+  <div id="app"></div>
+  <script>
+    window.APP_CONFIG = {
+      liffId: ${JSON.stringify(liffId)},
+      dashboardToken: ${JSON.stringify(dashboardToken)},
+      debugLineUserId: ${JSON.stringify(debugLineUserId)}
+    };
+  </script>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="/liff-assets/app.js"></script>
+</body>
+</html>`;
+}
 
 function renderLockedDashboard() {
   return `<!doctype html>
