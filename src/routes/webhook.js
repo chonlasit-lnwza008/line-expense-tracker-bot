@@ -86,6 +86,7 @@ async function handleText(user, text) {
   const pendingAction = await transactionService.getPendingAction(user.id);
   const isConfirm = /^(ยืนยัน|บันทึก|ตกลง|โอเค|ok|confirm|yes|ใช่)$/i.test(trimmed);
   const isCancel = /^(ยกเลิก|cancel|no|ไม่|ไม่เอา)$/i.test(trimmed);
+  const isPlainAmount = /^\d[\d,]*(?:\.\d{1,2})?$/.test(trimmed);
 
   if (/^(help|วิธีใช้)$/i.test(trimmed)) return buildHelpFlex();
   if (/^(dashboard|แดชบอร์ด)$/i.test(trimmed)) return buildDashboardLinkFlex();
@@ -115,8 +116,10 @@ async function handleText(user, text) {
   }
 
   if (/^ลบล่าสุด$/.test(trimmed)) {
-    const target = await transactionService.getLatestTransaction(user.id, 'confirmed');
-    if (!target) return buildErrorFlex('ยังไม่มีรายการให้ลบ', 'บันทึกรายการก่อน แล้วค่อยใช้คำสั่งลบล่าสุด');
+    const pendingDelete = await transactionService.requestDeleteLatest(user.id);
+    if (!pendingDelete) return buildErrorFlex('ยังไม่มีรายการให้ลบ', 'บันทึกรายการก่อน แล้วค่อยใช้คำสั่งลบล่าสุด');
+    const targetId = Number(String(pendingDelete.title || '').split(':')[1]);
+    const target = await transactionService.getUserTransaction(user.id, targetId);
     return buildDeleteConfirmFlex(target);
   }
 
@@ -167,13 +170,17 @@ async function handleText(user, text) {
   const goalReply = await handleGoal(user, trimmed);
   if (goalReply) return goalReply;
 
-  if (pending && parseAmount(trimmed)) {
+  if (pending && isPlainAmount) {
     const updated = await transactionService.updateLatest(user.id, { amount: parseAmount(trimmed) }, 'pending');
     return buildPendingFlex(updated, { heading: 'แก้ยอดแล้ว ตรวจสอบอีกครั้ง' });
   }
 
   const parsed = parseTextTransaction(trimmed);
   if (!parsed.ok) return buildErrorFlex('ยังอ่านยอดเงินไม่ได้', 'ลองพิมพ์เช่น "กาแฟ 45" หรือส่งรูปบิล/สลิปได้เลย');
+
+  if (pending) {
+    await transactionService.cancelTransaction(user.id, pending.id);
+  }
 
   const duplicate = await transactionService.findDuplicate(user.id, parsed);
   const status = duplicate ? 'pending' : 'confirmed';
