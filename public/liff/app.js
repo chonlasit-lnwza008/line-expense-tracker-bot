@@ -324,7 +324,7 @@ function render() {
         <h3 id="modalTitle">บันทึกรายจ่าย</h3>
         <p class="sheet-hint" id="modalHint">พิมพ์รายการแล้วบันทึกเข้าบัญชีทันที</p>
         <input id="quickText" autocomplete="off" placeholder="เช่น กาแฟ 45">
-        <label>หมวด${categoryInput('quickCategory')}</label>
+        ${categoryPicker('quickCategory', '', 'เลือกหมวด')}
         <div class="sheet-actions">
           <button class="secondary" type="button" id="closeModal">ยกเลิก</button>
           <button class="primary" type="submit" id="submitBtn">บันทึก</button>
@@ -343,7 +343,7 @@ function render() {
           <option value="income">รายรับ</option>
           <option value="transfer">โอนเงิน</option>
         </select></label>
-        <label>หมวด${categoryInput('editCategory')}</label>
+        ${categoryPicker('editCategory', '', 'เลือกหมวด')}
         <label>วันที่<input id="editDate" type="date"></label>
         <label>โน้ต<input id="editNote" autocomplete="off"></label>
         <div class="sheet-actions three">
@@ -358,7 +358,7 @@ function render() {
       <form class="sheet" id="budgetForm">
         <h3>ตั้งงบประมาณ</h3>
         <p class="sheet-hint">ใช้ "ทั้งหมด" สำหรับงบรวม หรือใส่ชื่อหมวด เช่น อาหาร</p>
-        <label>หมวด${categoryInput('budgetCategory', 'ทั้งหมด', 'ทั้งหมด หรือเลือกหมวด')}</label>
+        ${categoryPicker('budgetCategory', 'ทั้งหมด', 'เลือกหมวดงบ', { includeAll: true })}
         <label>วงเงิน<input id="budgetAmount" type="number" min="1" step="1" placeholder="8000"></label>
         <div class="sheet-actions">
           <button class="secondary" type="button" id="closeBudgetModal">ยกเลิก</button>
@@ -380,8 +380,6 @@ function render() {
         </div>
       </form>
     </div>
-
-    ${renderCategoryDatalist()}
   `;
 
   bindEvents();
@@ -402,16 +400,58 @@ function menuCard(iconClass, iconText, label, hint, action) {
   `;
 }
 
-function renderCategoryDatalist() {
+function categoryPicker(id, value = '', label = 'เลือกหมวด', options = {}) {
+  const categories = options.includeAll
+    ? STANDARD_CATEGORIES
+    : STANDARD_CATEGORIES.filter((category) => category !== 'ทั้งหมด');
   return `
-    <datalist id="categoryOptions">
-      ${STANDARD_CATEGORIES.map((category) => `<option value="${escapeHtml(category)}"></option>`).join('')}
-    </datalist>
+    <div class="category-field" data-category-field="${id}">
+      <div class="category-label">${escapeHtml(label)}</div>
+      <input id="${id}" type="hidden" value="${escapeHtml(value)}">
+      <div class="category-choice-grid">
+        ${categories.map((category) => `
+          <button class="category-choice${category === value ? ' selected' : ''}" type="button" data-category-target="${id}" data-category-value="${escapeHtml(category)}">${escapeHtml(category)}</button>
+        `).join('')}
+        <button class="category-choice add-choice" type="button" data-category-custom="${id}">+ เพิ่มหมวด</button>
+      </div>
+      <div class="category-current" data-category-current="${id}">${value ? `เลือกอยู่: ${escapeHtml(value)}` : 'ยังไม่ได้เลือกหมวด ระบบจะเดาให้อัตโนมัติ'}</div>
+    </div>
   `;
 }
 
-function categoryInput(id, value = '', placeholder = 'เลือกหรือพิมพ์หมวดเอง') {
-  return `<input id="${id}" list="categoryOptions" autocomplete="off" value="${escapeHtml(value)}" placeholder="${escapeHtml(placeholder)}">`;
+function setCategoryValue(id, value) {
+  const input = document.getElementById(id);
+  if (!input) return;
+  const normalized = String(value || '').trim();
+  input.value = normalized;
+
+  document.querySelectorAll(`[data-category-target="${id}"]`).forEach((button) => {
+    button.classList.toggle('selected', button.dataset.categoryValue === normalized);
+  });
+
+  const current = document.querySelector(`[data-category-current="${id}"]`);
+  if (current) {
+    current.textContent = normalized ? `เลือกอยู่: ${normalized}` : 'ยังไม่ได้เลือกหมวด ระบบจะเดาให้อัตโนมัติ';
+  }
+}
+
+function bindCategoryPickers() {
+  document.querySelectorAll('[data-category-target]').forEach((button) => {
+    button.addEventListener('click', () => {
+      setCategoryValue(button.dataset.categoryTarget, button.dataset.categoryValue);
+    });
+  });
+
+  document.querySelectorAll('[data-category-custom]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const target = button.dataset.categoryCustom;
+      const currentValue = document.getElementById(target).value;
+      const value = prompt('พิมพ์ชื่อหมวดที่ต้องการเพิ่ม', currentValue && !STANDARD_CATEGORIES.includes(currentValue) ? currentValue : '');
+      if (value === null) return;
+      const trimmed = value.trim().slice(0, 80);
+      if (trimmed) setCategoryValue(target, trimmed);
+    });
+  });
 }
 
 function renderSmartInsights(smartInsights) {
@@ -543,6 +583,7 @@ function bindEvents() {
   document.querySelectorAll('[data-edit-id]').forEach((button) => {
     button.addEventListener('click', () => openEditModal(button.dataset.editId));
   });
+  bindCategoryPickers();
 
   document.getElementById('closeModal').addEventListener('click', closeQuickModal);
   document.getElementById('quickModal').addEventListener('click', (event) => {
@@ -610,7 +651,7 @@ function openQuickModal(type) {
     : 'พิมพ์รายจ่าย แล้วบันทึกเข้าบัญชีทันที';
   document.getElementById('quickText').placeholder = isIncome ? 'เช่น เงินเดือน 18000' : 'เช่น กาแฟ 45';
   document.getElementById('quickText').value = '';
-  document.getElementById('quickCategory').value = isIncome ? 'รายรับ' : '';
+  setCategoryValue('quickCategory', isIncome ? 'รายรับ' : '');
 
   const submitBtn = document.getElementById('submitBtn');
   submitBtn.textContent = isIncome ? 'บันทึกรายรับ' : 'บันทึกรายจ่าย';
@@ -625,7 +666,7 @@ function closeQuickModal() {
 }
 
 function openBudgetModal() {
-  document.getElementById('budgetCategory').value = 'ทั้งหมด';
+  setCategoryValue('budgetCategory', 'ทั้งหมด');
   document.getElementById('budgetAmount').value = '';
   document.getElementById('budgetModal').classList.add('open');
   setTimeout(() => document.getElementById('budgetAmount').focus(), 50);
@@ -666,7 +707,7 @@ function openEditModal(id) {
   document.getElementById('editTitle').value = transaction.title || '';
   document.getElementById('editAmount').value = Number(transaction.amount || 0);
   document.getElementById('editType').value = transaction.type || 'expense';
-  document.getElementById('editCategory').value = transaction.category || 'อื่นๆ';
+  setCategoryValue('editCategory', transaction.category || 'อื่นๆ');
   document.getElementById('editDate').value = transaction.transactionDate || '';
   document.getElementById('editNote').value = transaction.note || '';
   document.getElementById('editModal').classList.add('open');

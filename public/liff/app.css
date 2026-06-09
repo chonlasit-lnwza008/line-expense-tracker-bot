@@ -782,6 +782,67 @@ button:disabled {
   margin-bottom: 10px;
 }
 
+.category-field {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+  min-width: 0;
+}
+
+.category-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.category-choice-grid {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 2px 8px;
+  scrollbar-width: none;
+}
+
+.category-choice-grid::-webkit-scrollbar {
+  display: none;
+}
+
+.category-choice {
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #44505f;
+  padding: 9px 12px;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+  transition: transform 0.12s ease, background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.category-choice:active {
+  transform: scale(0.96);
+}
+
+.category-choice.selected {
+  background: #e6f7f1;
+  border-color: rgba(21, 168, 107, 0.5);
+  color: #087a4d;
+}
+
+.category-choice.add-choice {
+  background: #fff7e3;
+  border-color: rgba(246, 195, 79, 0.55);
+  color: #a66a00;
+}
+
+.category-current {
+  color: #0f766e;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
 .edit-sheet {
   max-height: calc(100vh - 28px);
   overflow-y: auto;
