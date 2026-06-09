@@ -34,6 +34,8 @@ IMAGE_STORAGE_PATH=./uploads
 PORT=3000
 DASHBOARD_TOKEN=your-dashboard-password
 DASHBOARD_URL=https://your-render-url.onrender.com/dashboard?token=your-dashboard-password
+LIFF_ID=your-liff-id
+LIFF_URL=https://liff.line.me/your-liff-id
 RICH_MENU_NAME=LINE Expense Tracker Menu
 OCR_PROVIDER=google
 GOOGLE_VISION_API_KEY=ใส่ Google Vision API key
@@ -121,7 +123,7 @@ The dashboard shows monthly income, expense, net balance, category chart, daily 
 The chat bot still works the same way. The LIFF app adds a mobile dashboard inside LINE:
 
 ```text
-https://your-render-url.onrender.com/liff
+https://liff.line.me/your-liff-id
 ```
 
 Setup in LINE Developers:
@@ -135,18 +137,27 @@ Setup in LINE Developers:
 
 ```env
 LIFF_ID=your-liff-id
-LIFF_URL=https://your-render-url.onrender.com/liff
+LIFF_URL=https://liff.line.me/your-liff-id
 ```
+
+Important: the Endpoint URL and the user-facing LIFF URL are different.
+
+- Endpoint URL in LINE Developers: `https://your-render-url.onrender.com/liff`
+- Rich Menu / user-facing URL: `https://liff.line.me/your-liff-id`
+
+If a phone opens `https://your-render-url.onrender.com/liff` directly inside LINE, some devices may show an unknown LIFF error. Use the `liff.line.me` URL for the Rich Menu button.
 
 The LIFF page shows monthly totals, spending by category, recent 7-day transactions, and quick buttons that send normal bot commands back into the chat.
 
 ## LINE Rich Menu
 
-ตั้งค่า `LINE_CHANNEL_ACCESS_TOKEN` และถ้าต้องการปุ่ม Dashboard ให้ตั้ง `DASHBOARD_URL` ก่อน จากนั้นรัน:
+ตั้งค่า `LINE_CHANNEL_ACCESS_TOKEN`, `LIFF_ID`, และ `LIFF_URL=https://liff.line.me/your-liff-id` ก่อน จากนั้นรัน:
 
 ```bash
 npm run richmenu:setup
 ```
+
+ถ้าไม่ได้ตั้ง `LIFF_URL` แต่ตั้ง `LIFF_ID` ไว้แล้ว สคริปต์จะใช้ `https://liff.line.me/<LIFF_ID>` ให้อัตโนมัติสำหรับปุ่ม Dashboard.
 
 สคริปต์จะสร้าง Rich Menu 6 ปุ่มและตั้งเป็น default ให้ผู้ใช้ทุกคน:
 

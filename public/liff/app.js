@@ -5,7 +5,12 @@ const state = {
   data: null,
   month: new Date().toISOString().slice(0, 7),
   modalType: 'expense',
-  editingTransaction: null
+  editingTransaction: null,
+  transactionFilter: {
+    type: 'all',
+    category: 'all',
+    search: ''
+  }
 };
 
 const STANDARD_CATEGORIES = [
@@ -308,7 +313,8 @@ function render() {
         <button class="text-action" type="button" data-scroll="edit">เลือกจากรายการด้านล่าง</button>
       </section>
       <section class="panel">
-        ${renderTransactions(data.recentSevenDays)}
+        ${renderTransactionFilters(data.recentSevenDays)}
+        ${renderTransactions(getFilteredTransactions(data.recentSevenDays))}
       </section>
     </main>
 
@@ -541,6 +547,66 @@ function renderCategoryBars(categories) {
   `;
 }
 
+function uniqueTransactionCategories(rows) {
+  const categories = rows
+    .map((row) => row.category || 'อื่นๆ')
+    .filter(Boolean);
+  return [...new Set(categories)];
+}
+
+function getFilteredTransactions(rows) {
+  const query = state.transactionFilter.search.trim().toLowerCase();
+  return rows.filter((row) => {
+    const typeMatches = state.transactionFilter.type === 'all' || row.type === state.transactionFilter.type;
+    const categoryMatches = state.transactionFilter.category === 'all' || row.category === state.transactionFilter.category;
+    const searchMatches = !query || `${row.title || ''} ${row.category || ''} ${row.note || ''}`.toLowerCase().includes(query);
+    return typeMatches && categoryMatches && searchMatches;
+  });
+}
+
+function filteredSummary(rows) {
+  return rows.reduce((summary, row) => {
+    const amount = Number(row.amount || 0);
+    if (row.type === 'income') summary.income += amount;
+    if (row.type === 'expense') summary.expense += amount;
+    summary.count += 1;
+    return summary;
+  }, { count: 0, income: 0, expense: 0 });
+}
+
+function renderTransactionFilters(rows) {
+  const categories = uniqueTransactionCategories(rows);
+  const filteredRows = getFilteredTransactions(rows);
+  const summary = filteredSummary(filteredRows);
+  return `
+    <div class="filter-panel">
+      <div class="filter-row">
+        ${filterButton('type', 'all', 'ทั้งหมด')}
+        ${filterButton('type', 'income', 'รายรับ')}
+        ${filterButton('type', 'expense', 'รายจ่าย')}
+      </div>
+      <div class="filter-row category-filter-row">
+        ${filterButton('category', 'all', 'ทุกหมวด')}
+        ${categories.map((category) => filterButton('category', category, category)).join('')}
+      </div>
+      <label class="filter-search">
+        <span>ค้นหารายการ</span>
+        <input id="transactionSearch" type="search" value="${escapeHtml(state.transactionFilter.search)}" placeholder="เช่น กาแฟ, อาหาร, HOMEPRO">
+      </label>
+      <div class="filter-summary">
+        <span>${money.format(summary.count)} รายการ</span>
+        <span class="income-text">รับ ${formatMoney(summary.income)}</span>
+        <span class="expense-text">จ่าย ${formatMoney(summary.expense)}</span>
+      </div>
+    </div>
+  `;
+}
+
+function filterButton(kind, value, label) {
+  const selected = state.transactionFilter[kind] === value;
+  return `<button class="filter-chip${selected ? ' selected' : ''}" type="button" data-filter-kind="${kind}" data-filter-value="${escapeHtml(value)}">${escapeHtml(label)}</button>`;
+}
+
 function renderTransactions(rows) {
   if (!rows.length) return '<div class="empty">ยังไม่มีรายการใน 7 วันล่าสุด</div>';
   return `
@@ -583,6 +649,26 @@ function bindEvents() {
   document.querySelectorAll('[data-edit-id]').forEach((button) => {
     button.addEventListener('click', () => openEditModal(button.dataset.editId));
   });
+  document.querySelectorAll('[data-filter-kind]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.transactionFilter[button.dataset.filterKind] = button.dataset.filterValue;
+      render();
+      scrollToSection('edit');
+    });
+  });
+  const transactionSearch = document.getElementById('transactionSearch');
+  if (transactionSearch) {
+    transactionSearch.addEventListener('input', () => {
+      state.transactionFilter.search = transactionSearch.value;
+      render();
+      scrollToSection('edit');
+      const nextSearch = document.getElementById('transactionSearch');
+      if (nextSearch) {
+        nextSearch.focus();
+        nextSearch.setSelectionRange(nextSearch.value.length, nextSearch.value.length);
+      }
+    });
+  }
   bindCategoryPickers();
 
   document.getElementById('closeModal').addEventListener('click', closeQuickModal);

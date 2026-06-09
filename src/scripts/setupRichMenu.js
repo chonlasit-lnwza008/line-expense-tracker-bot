@@ -8,7 +8,8 @@ const HEIGHT = 1686;
 const ROW_HEIGHT = 843;
 const COLS = [833, 833, 834];
 const MENU_NAME = process.env.RICH_MENU_NAME || 'LINE Expense Tracker Menu';
-const APP_URL = process.env.LIFF_URL || process.env.DASHBOARD_URL || '';
+const LIFF_ID = process.env.LIFF_ID || '';
+const APP_URL = process.env.LIFF_URL || (LIFF_ID ? `https://liff.line.me/${LIFF_ID}` : process.env.DASHBOARD_URL || '');
 
 const buttons = [
   { label: 'วันนี้', hint: 'สรุปยอด', message: 'สรุปวันนี้', color: '#0f766e', icon: 'calendar' },
