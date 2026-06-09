@@ -8,6 +8,23 @@ const state = {
   editingTransaction: null
 };
 
+const STANDARD_CATEGORIES = [
+  'ทั้งหมด',
+  'อาหาร',
+  'เครื่องดื่ม',
+  'เดินทาง',
+  'บิลประจำ',
+  'สิ่งใช้ประจำวัน',
+  'ของใช้',
+  'สุขภาพ',
+  'ช้อปปิ้ง',
+  'ครอบครัว',
+  'บันเทิง',
+  'การศึกษา',
+  'รายรับ',
+  'อื่นๆ'
+];
+
 const money = new Intl.NumberFormat('th-TH', {
   minimumFractionDigits: 0,
   maximumFractionDigits: 2
@@ -307,6 +324,7 @@ function render() {
         <h3 id="modalTitle">บันทึกรายจ่าย</h3>
         <p class="sheet-hint" id="modalHint">พิมพ์รายการแล้วบันทึกเข้าบัญชีทันที</p>
         <input id="quickText" autocomplete="off" placeholder="เช่น กาแฟ 45">
+        <label>หมวด${categoryInput('quickCategory')}</label>
         <div class="sheet-actions">
           <button class="secondary" type="button" id="closeModal">ยกเลิก</button>
           <button class="primary" type="submit" id="submitBtn">บันทึก</button>
@@ -325,7 +343,7 @@ function render() {
           <option value="income">รายรับ</option>
           <option value="transfer">โอนเงิน</option>
         </select></label>
-        <label>หมวด<input id="editCategory" autocomplete="off"></label>
+        <label>หมวด${categoryInput('editCategory')}</label>
         <label>วันที่<input id="editDate" type="date"></label>
         <label>โน้ต<input id="editNote" autocomplete="off"></label>
         <div class="sheet-actions three">
@@ -340,7 +358,7 @@ function render() {
       <form class="sheet" id="budgetForm">
         <h3>ตั้งงบประมาณ</h3>
         <p class="sheet-hint">ใช้ "ทั้งหมด" สำหรับงบรวม หรือใส่ชื่อหมวด เช่น อาหาร</p>
-        <label>หมวด<input id="budgetCategory" autocomplete="off" placeholder="ทั้งหมด"></label>
+        <label>หมวด${categoryInput('budgetCategory', 'ทั้งหมด', 'ทั้งหมด หรือเลือกหมวด')}</label>
         <label>วงเงิน<input id="budgetAmount" type="number" min="1" step="1" placeholder="8000"></label>
         <div class="sheet-actions">
           <button class="secondary" type="button" id="closeBudgetModal">ยกเลิก</button>
@@ -362,6 +380,8 @@ function render() {
         </div>
       </form>
     </div>
+
+    ${renderCategoryDatalist()}
   `;
 
   bindEvents();
@@ -380,6 +400,18 @@ function menuCard(iconClass, iconText, label, hint, action) {
       <small>${escapeHtml(hint)}</small>
     </button>
   `;
+}
+
+function renderCategoryDatalist() {
+  return `
+    <datalist id="categoryOptions">
+      ${STANDARD_CATEGORIES.map((category) => `<option value="${escapeHtml(category)}"></option>`).join('')}
+    </datalist>
+  `;
+}
+
+function categoryInput(id, value = '', placeholder = 'เลือกหรือพิมพ์หมวดเอง') {
+  return `<input id="${id}" list="categoryOptions" autocomplete="off" value="${escapeHtml(value)}" placeholder="${escapeHtml(placeholder)}">`;
 }
 
 function renderSmartInsights(smartInsights) {
@@ -537,10 +569,12 @@ function bindEvents() {
     const value = document.getElementById('quickText').value.trim();
     if (!value) return;
     const prefix = state.modalType === 'income' && !/^(รับ|รายรับ|ได้เงิน)/.test(value) ? 'รับ ' : '';
+    const category = document.getElementById('quickCategory').value.trim();
+    const categorySuffix = category ? ` หมวด ${category}` : '';
     const submitBtn = document.getElementById('submitBtn');
     submitBtn.disabled = true;
     try {
-      await createDashboardTransaction(prefix + value);
+      await createDashboardTransaction(`${prefix}${value}${categorySuffix}`);
     } catch (error) {
       alert(error.message);
     } finally {
@@ -576,6 +610,7 @@ function openQuickModal(type) {
     : 'พิมพ์รายจ่าย แล้วบันทึกเข้าบัญชีทันที';
   document.getElementById('quickText').placeholder = isIncome ? 'เช่น เงินเดือน 18000' : 'เช่น กาแฟ 45';
   document.getElementById('quickText').value = '';
+  document.getElementById('quickCategory').value = isIncome ? 'รายรับ' : '';
 
   const submitBtn = document.getElementById('submitBtn');
   submitBtn.textContent = isIncome ? 'บันทึกรายรับ' : 'บันทึกรายจ่าย';

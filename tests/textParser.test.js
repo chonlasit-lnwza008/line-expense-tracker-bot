@@ -27,6 +27,20 @@ test('parses explicit category', () => {
   assert.equal(result.category, 'ของใช้');
 });
 
+test('detects daily essentials category', () => {
+  const result = parseTextTransaction('ทิชชู่ 89');
+  assert.equal(result.ok, true);
+  assert.equal(result.amount, 89);
+  assert.equal(result.category, 'สิ่งใช้ประจำวัน');
+});
+
+test('allows dashboard custom daily essentials category', () => {
+  const result = parseTextTransaction('น้ำยาซักผ้า 159 หมวด สิ่งใช้ประจำวัน');
+  assert.equal(result.ok, true);
+  assert.equal(result.amount, 159);
+  assert.equal(result.category, 'สิ่งใช้ประจำวัน');
+});
+
 test('parses income', () => {
   const result = parseTextTransaction('รับ เงินเดือน 18000');
   assert.equal(result.ok, true);
