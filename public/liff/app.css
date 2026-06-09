@@ -50,6 +50,11 @@ button {
   -webkit-tap-highlight-color: transparent;
 }
 
+button:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
 .app {
   min-height: 100vh;
   padding: 16px 14px 96px;

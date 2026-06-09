@@ -1,5 +1,6 @@
 const db = require('../config/database');
 const transactionService = require('./transactionService');
+const { parseTextTransaction } = require('../parser/textParser');
 const { currentMonth, monthRange, toDateOnly, formatDisplayDate } = require('../utils/dateUtils');
 const { normalizeTransaction } = require('./summaryService');
 
@@ -105,4 +106,22 @@ async function getOverview(lineUserId, month = currentMonth()) {
   };
 }
 
-module.exports = { getOverview };
+async function createFromText(lineUserId, text) {
+  const user = await transactionService.findOrCreateUser(lineUserId);
+  const parsed = parseTextTransaction(String(text || '').trim());
+  if (!parsed.ok) {
+    const error = new Error('Cannot parse transaction amount');
+    error.statusCode = 400;
+    error.reason = parsed.reason;
+    throw error;
+  }
+
+  const tx = await transactionService.createTransaction(user.id, {
+    ...parsed,
+    source: 'text'
+  }, 'confirmed');
+
+  return mapTransaction(normalizeTransaction(tx));
+}
+
+module.exports = { getOverview, createFromText };

@@ -99,6 +99,22 @@ app.get('/api/liff/overview', async (req, res, next) => {
   }
 });
 
+app.post('/api/liff/transactions', express.json({ limit: '32kb' }), async (req, res, next) => {
+  try {
+    const lineUserId = await resolveLiffLineUserId(req);
+    const transaction = await liffDashboardService.createFromText(lineUserId, req.body && req.body.text);
+    res.status(201).json({ transaction });
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        error: error.message,
+        reason: error.reason
+      });
+    }
+    next(error);
+  }
+});
+
 app.use('/webhook', webhookRouter);
 
 app.use((err, req, res, next) => {

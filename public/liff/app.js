@@ -60,22 +60,53 @@ async function init() {
 }
 
 async function loadOverview() {
-  const params = new URLSearchParams({ month: state.month });
-  const headers = {};
-
-  if (state.accessToken) {
-    headers.Authorization = `Bearer ${state.accessToken}`;
-  } else if (config.dashboardToken && config.debugLineUserId) {
-    params.set('token', config.dashboardToken);
-    params.set('lineUserId', config.debugLineUserId);
-  }
-
-  const response = await fetch(`/api/liff/overview?${params.toString()}`, { headers });
+  const response = await fetch(`/api/liff/overview?${liffQueryParams().toString()}`, {
+    headers: liffHeaders()
+  });
   const data = await response.json();
   if (!response.ok) {
     throw new Error(data.error || 'โหลดข้อมูลไม่ได้');
   }
   state.data = data;
+}
+
+function liffQueryParams() {
+  const params = new URLSearchParams({ month: state.month });
+  if (!state.accessToken && config.dashboardToken && config.debugLineUserId) {
+    params.set('token', config.dashboardToken);
+    params.set('lineUserId', config.debugLineUserId);
+  }
+  return params;
+}
+
+function liffHeaders(includeJson = false) {
+  const headers = {};
+  if (includeJson) {
+    headers['Content-Type'] = 'application/json';
+  }
+  if (state.accessToken) {
+    headers.Authorization = `Bearer ${state.accessToken}`;
+  }
+  return headers;
+}
+
+async function createDashboardTransaction(text) {
+  const response = await fetch(`/api/liff/transactions?${liffQueryParams().toString()}`, {
+    method: 'POST',
+    headers: liffHeaders(true),
+    body: JSON.stringify({ text })
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    const message = data.reason === 'amount_not_found'
+      ? 'ยังอ่านยอดเงินไม่ได้ ลองพิมพ์เช่น "กาแฟ 45"'
+      : data.error || 'บันทึกไม่สำเร็จ';
+    throw new Error(message);
+  }
+  await loadOverview();
+  render();
+  alert(`บันทึกแล้ว: ${data.transaction.title} ${formatMoney(data.transaction.amount)}`);
+  return data.transaction;
 }
 
 function render() {
@@ -158,11 +189,11 @@ function render() {
     <div id="quickModal" class="modal">
       <form class="sheet" id="quickForm">
         <h3 id="modalTitle">บันทึกรายจ่าย</h3>
-        <p class="sheet-hint" id="modalHint">พิมพ์รายการแล้วส่งเข้าแชทเพื่อให้บอทบันทึกให้</p>
+        <p class="sheet-hint" id="modalHint">พิมพ์รายการแล้วบันทึกเข้าบัญชีทันที</p>
         <input id="quickText" autocomplete="off" placeholder="เช่น กาแฟ 45">
         <div class="sheet-actions">
           <button class="secondary" type="button" id="closeModal">ยกเลิก</button>
-          <button class="primary" type="submit" id="submitBtn">ส่งเข้าแชท</button>
+          <button class="primary" type="submit" id="submitBtn">บันทึก</button>
         </div>
       </form>
     </div>
@@ -258,8 +289,17 @@ function bindEvents() {
     const value = document.getElementById('quickText').value.trim();
     if (!value) return;
     const prefix = state.modalType === 'income' && !/^(รับ|รายรับ|ได้เงิน)/.test(value) ? 'รับ ' : '';
-    await sendChatText(prefix + value);
-    closeQuickModal();
+    const submitBtn = document.getElementById('submitBtn');
+    submitBtn.disabled = true;
+    try {
+      await createDashboardTransaction(prefix + value);
+    } catch (error) {
+      alert(error.message);
+    } finally {
+      if (document.getElementById('submitBtn')) {
+        document.getElementById('submitBtn').disabled = false;
+      }
+    }
   });
 }
 
@@ -276,8 +316,8 @@ function openQuickModal(type) {
   const isIncome = type === 'income';
   document.getElementById('modalTitle').textContent = isIncome ? 'บันทึกรายรับ' : 'บันทึกรายจ่าย';
   document.getElementById('modalHint').textContent = isIncome
-    ? 'พิมพ์รายรับแล้วส่งเข้าแชทเพื่อให้บอทบันทึกให้'
-    : 'พิมพ์รายจ่ายแล้วส่งเข้าแชทเพื่อให้บอทบันทึกให้';
+    ? 'พิมพ์รายรับ แล้วบันทึกเข้าบัญชีทันที'
+    : 'พิมพ์รายจ่าย แล้วบันทึกเข้าบัญชีทันที';
   document.getElementById('quickText').placeholder = isIncome ? 'เช่น เงินเดือน 18000' : 'เช่น กาแฟ 45';
   document.getElementById('quickText').value = '';
 
