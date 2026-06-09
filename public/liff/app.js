@@ -251,7 +251,7 @@ function render() {
             <div class="date">วันนี้ ${escapeHtml(data.displayToday)}</div>
           </div>
         </div>
-        <button class="bell" type="button" data-command="วิเคราะห์เดือนนี้" aria-label="คำแนะนำ">!</button>
+        <button class="bell" type="button" data-command="วิเคราะห์เดือนนี้" aria-label="คำแนะนำ">${iconGraphic('insight')}</button>
       </section>
 
       <section class="hero">
@@ -358,10 +358,10 @@ function render() {
     </main>
 
     <nav class="tabbar">
-      <button class="active" type="button" data-scroll="top">หน้าหลัก</button>
-      <button type="button" data-command="สรุปวันนี้">วันนี้</button>
-      <button type="button" data-scroll="chart">กราฟ</button>
-      <button type="button" data-scroll="edit">แก้ไข</button>
+      <button class="active" type="button" data-scroll="top"><span class="tab-icon">${iconGraphic('home')}</span><span>หน้าหลัก</span></button>
+      <button type="button" data-command="สรุปวันนี้"><span class="tab-icon">${iconGraphic('today')}</span><span>วันนี้</span></button>
+      <button type="button" data-scroll="chart"><span class="tab-icon">${iconGraphic('chart')}</span><span>กราฟ</span></button>
+      <button type="button" data-scroll="edit"><span class="tab-icon">${iconGraphic('edit')}</span><span>แก้ไข</span></button>
     </nav>
 
     <div id="quickModal" class="modal">
@@ -461,11 +461,105 @@ function menuCard(iconClass, iconText, label, hint, action) {
       : `data-command="${escapeHtml(action)}"`;
   return `
     <button class="menu-card" type="button" ${attr}>
-      <div class="icon ${iconClass}">${escapeHtml(iconText)}</div>
+      <div class="icon ${iconClass}" aria-hidden="true">${iconGraphic(iconClass, iconText)}</div>
       <span>${escapeHtml(label)}</span>
       <small>${escapeHtml(hint)}</small>
     </button>
   `;
+}
+
+function iconGraphic(name, fallback = '') {
+  const icons = {
+    expense: `
+      <svg viewBox="0 0 48 48" role="img" aria-label="รายจ่าย">
+        <path d="M11 14h26a5 5 0 0 1 5 5v16a5 5 0 0 1-5 5H11a5 5 0 0 1-5-5V19a5 5 0 0 1 5-5Z"/>
+        <path d="M13 14V10a5 5 0 0 1 5-5h16"/>
+        <path d="M34 27h8"/>
+        <path d="M23 22v10"/>
+        <path d="m18 27 5 5 5-5"/>
+      </svg>`,
+    income: `
+      <svg viewBox="0 0 48 48" role="img" aria-label="รายรับ">
+        <circle cx="24" cy="24" r="16"/>
+        <path d="M24 14v20"/>
+        <path d="M18 20c1.5-3 10.5-3 12 1.5 1.7 5-10.8 3.5-9 8.5 1.3 3.7 9.5 3.1 11-.5"/>
+        <path d="m9 14 7-7 7 7"/>
+      </svg>`,
+    slip: `
+      <svg viewBox="0 0 48 48" role="img" aria-label="สลิป">
+        <path d="M13 5h22v38l-5-3-6 3-6-3-5 3V5Z"/>
+        <path d="M18 16h12"/>
+        <path d="M18 24h14"/>
+        <path d="M18 32h9"/>
+        <path d="M34 34h7v7h-7z"/>
+      </svg>`,
+    today: `
+      <svg viewBox="0 0 48 48" role="img" aria-label="วันนี้">
+        <path d="M10 12h28a4 4 0 0 1 4 4v22a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4V16a4 4 0 0 1 4-4Z"/>
+        <path d="M6 20h36"/>
+        <path d="M16 7v8"/>
+        <path d="M32 7v8"/>
+        <path d="m17 31 5 5 10-12"/>
+      </svg>`,
+    chart: `
+      <svg viewBox="0 0 48 48" role="img" aria-label="กราฟ">
+        <path d="M8 40h34"/>
+        <path d="M13 34V22"/>
+        <path d="M24 34V13"/>
+        <path d="M35 34V18"/>
+        <path d="m12 15 8-6 9 7 8-10"/>
+      </svg>`,
+    edit: `
+      <svg viewBox="0 0 48 48" role="img" aria-label="แก้ไข">
+        <path d="M10 38h28"/>
+        <path d="M15 33 34 14l5 5-19 19-7 2 2-7Z"/>
+        <path d="m30 18 5 5"/>
+        <path d="M12 12h13"/>
+      </svg>`,
+    budget: `
+      <svg viewBox="0 0 48 48" role="img" aria-label="งบประมาณ">
+        <path d="M9 14h30v25H9z"/>
+        <path d="M13 14V9h22v5"/>
+        <path d="M16 24h16"/>
+        <path d="M16 31h10"/>
+        <circle cx="35" cy="31" r="5"/>
+      </svg>`,
+    goal: `
+      <svg viewBox="0 0 48 48" role="img" aria-label="เป้าหมาย">
+        <circle cx="24" cy="24" r="17"/>
+        <circle cx="24" cy="24" r="10"/>
+        <circle cx="24" cy="24" r="3"/>
+        <path d="m30 18 10-10"/>
+        <path d="M36 8h4v4"/>
+      </svg>`,
+    export: `
+      <svg viewBox="0 0 48 48" role="img" aria-label="Export CSV">
+        <path d="M14 5h15l8 8v30H14z"/>
+        <path d="M29 5v9h8"/>
+        <path d="M20 27h8"/>
+        <path d="M24 19v16"/>
+        <path d="m18 29 6 6 6-6"/>
+      </svg>`,
+    insight: `
+      <svg viewBox="0 0 48 48" role="img" aria-label="คำแนะนำ">
+        <path d="M24 5v7"/>
+        <path d="M24 36v7"/>
+        <path d="M5 24h7"/>
+        <path d="M36 24h7"/>
+        <path d="m11 11 5 5"/>
+        <path d="m32 32 5 5"/>
+        <path d="m37 11-5 5"/>
+        <path d="m16 32-5 5"/>
+        <circle cx="24" cy="24" r="7"/>
+      </svg>`,
+    home: `
+      <svg viewBox="0 0 48 48" role="img" aria-label="หน้าหลัก">
+        <path d="M7 23 24 8l17 15"/>
+        <path d="M13 21v20h22V21"/>
+        <path d="M20 41V29h8v12"/>
+      </svg>`
+  };
+  return icons[name] || `<span>${escapeHtml(fallback)}</span>`;
 }
 
 function categoryPicker(id, value = '', label = 'เลือกหมวด', options = {}) {
