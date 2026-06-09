@@ -141,6 +141,57 @@ async function deleteDashboardTransaction(id) {
   return data.transaction;
 }
 
+async function createDashboardBudget(payload) {
+  const response = await fetch(`/api/liff/budgets?${liffQueryParams().toString()}`, {
+    method: 'POST',
+    headers: liffHeaders(true),
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'ตั้งงบไม่สำเร็จ');
+  }
+  await loadOverview();
+  render();
+  alert('ตั้งงบแล้ว');
+  return data.budget;
+}
+
+async function createDashboardGoal(payload) {
+  const response = await fetch(`/api/liff/goals?${liffQueryParams().toString()}`, {
+    method: 'POST',
+    headers: liffHeaders(true),
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'ตั้งเป้าไม่สำเร็จ');
+  }
+  await loadOverview();
+  render();
+  alert(`ตั้งเป้าแล้ว ต้องเก็บประมาณ ${formatMoney(data.goal.monthlySaving)}/เดือน`);
+  return data.goal;
+}
+
+async function downloadDashboardCsv(scope = 'month') {
+  const response = await fetch(`/api/liff/export?scope=${encodeURIComponent(scope)}&${liffQueryParams().toString()}`, {
+    headers: liffHeaders()
+  });
+  if (!response.ok) {
+    throw new Error('export ไม่สำเร็จ');
+  }
+  const csv = await response.text();
+  const blob = new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `line-expense-${scope}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 function render() {
   const data = state.data;
   const topCategory = data.categories[0] ? data.categories[0].category : 'ยังไม่มีหมวดเด่น';
@@ -181,6 +232,10 @@ function render() {
         </div>
       </section>
 
+      <section class="panel smart-panel">
+        ${renderSmartInsights(data.smartInsights)}
+      </section>
+
       <section class="section-title">
         <h2>เมนูบัญชี</h2>
         <small>${escapeHtml(data.month)}</small>
@@ -192,6 +247,35 @@ function render() {
         ${menuCard('today', 'วันนี้', 'สรุปวันนี้', 'ยอดรวม', 'สรุปวันนี้')}
         ${menuCard('chart', 'กราฟ', 'กราฟรายจ่าย', 'ตามหมวด', 'scroll-chart')}
         ${menuCard('edit', 'แก้', 'แก้ไข 7 วัน', 'รายการล่าสุด', 'scroll-edit')}
+        ${menuCard('budget', 'งบ', 'ตั้งงบ', 'คุมใช้จ่าย', 'open-budget')}
+        ${menuCard('goal', 'เป้า', 'ตั้งเป้า', 'เงินเก็บ', 'open-goal')}
+        ${menuCard('export', 'CSV', 'Export', 'เปิด Excel', 'export-month')}
+      </section>
+
+      <section class="section-title">
+        <h2>วันนี้</h2>
+        <small>รายรับ/รายจ่าย</small>
+      </section>
+      <section class="panel today-panel">
+        <div><span>รับวันนี้</span><strong class="income-text">${formatMoney(data.todayTotals.income)}</strong></div>
+        <div><span>จ่ายวันนี้</span><strong class="expense-text">${formatMoney(data.todayTotals.expense)}</strong></div>
+        <div><span>สุทธิวันนี้</span><strong>${formatMoney(data.todayTotals.net)}</strong></div>
+      </section>
+
+      <section class="section-title">
+        <h2>งบประมาณ</h2>
+        <button class="text-action" type="button" data-open="budget">ตั้งงบ</button>
+      </section>
+      <section class="panel">
+        ${renderBudgets(data.budgets)}
+      </section>
+
+      <section class="section-title">
+        <h2>เป้าหมายเก็บเงิน</h2>
+        <button class="text-action" type="button" data-open="goal">ตั้งเป้า</button>
+      </section>
+      <section class="panel">
+        ${renderGoals(data.goals)}
       </section>
 
       <section id="chart" class="section-title">
@@ -251,6 +335,33 @@ function render() {
         </div>
       </form>
     </div>
+
+    <div id="budgetModal" class="modal">
+      <form class="sheet" id="budgetForm">
+        <h3>ตั้งงบประมาณ</h3>
+        <p class="sheet-hint">ใช้ "ทั้งหมด" สำหรับงบรวม หรือใส่ชื่อหมวด เช่น อาหาร</p>
+        <label>หมวด<input id="budgetCategory" autocomplete="off" placeholder="ทั้งหมด"></label>
+        <label>วงเงิน<input id="budgetAmount" type="number" min="1" step="1" placeholder="8000"></label>
+        <div class="sheet-actions">
+          <button class="secondary" type="button" id="closeBudgetModal">ยกเลิก</button>
+          <button class="primary" type="submit" id="saveBudgetBtn">ตั้งงบ</button>
+        </div>
+      </form>
+    </div>
+
+    <div id="goalModal" class="modal">
+      <form class="sheet" id="goalForm">
+        <h3>ตั้งเป้าเก็บเงิน</h3>
+        <p class="sheet-hint">ระบบจะคำนวณยอดที่ควรเก็บต่อเดือนให้</p>
+        <label>ชื่อเป้าหมาย<input id="goalName" autocomplete="off" placeholder="iPad"></label>
+        <label>ยอดเป้าหมาย<input id="goalAmount" type="number" min="1" step="1" placeholder="18000"></label>
+        <label>จำนวนเดือน<input id="goalMonths" type="number" min="1" max="120" step="1" placeholder="6"></label>
+        <div class="sheet-actions">
+          <button class="secondary" type="button" id="closeGoalModal">ยกเลิก</button>
+          <button class="primary" type="submit" id="saveGoalBtn">ตั้งเป้า</button>
+        </div>
+      </form>
+    </div>
   `;
 
   bindEvents();
@@ -268,6 +379,70 @@ function menuCard(iconClass, iconText, label, hint, action) {
       <span>${escapeHtml(label)}</span>
       <small>${escapeHtml(hint)}</small>
     </button>
+  `;
+}
+
+function renderSmartInsights(smartInsights) {
+  const data = smartInsights || {};
+  const insights = data.insights || [];
+  const warnings = data.warnings || [];
+  const recommendations = data.recommendations || [];
+  return `
+    <div class="smart-head">
+      <span>AI แนะนำ</span>
+      <strong>${escapeHtml(data.headline || 'พร้อมช่วยดูเงินให้')}</strong>
+    </div>
+    <div class="smart-list">
+      ${[...warnings, ...recommendations, ...insights].slice(0, 4).map((item) => `
+        <div class="smart-item">${escapeHtml(item)}</div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderBudgets(budgets) {
+  if (!budgets || !budgets.length) {
+    return '<div class="empty">ยังไม่มีงบประมาณ กดตั้งงบเพื่อให้ระบบช่วยเตือน</div>';
+  }
+  return `
+    <div class="budget-list">
+      ${budgets.map((budget) => {
+        const percent = Math.min(Math.max(Number(budget.percent || 0), 0), 999);
+        const statusClass = percent >= 100 ? 'danger-fill' : percent >= 80 ? 'warn-fill' : 'ok-fill';
+        return `
+          <div class="budget-row">
+            <div class="budget-top">
+              <strong>${escapeHtml(budget.category)}</strong>
+              <span>${percent}%</span>
+            </div>
+            <div class="budget-meta">ใช้ ${formatMoney(budget.spent)} / ${formatMoney(budget.amount)}</div>
+            <div class="bar-track"><div class="bar-fill ${statusClass}" style="width:${Math.min(percent, 100)}%"></div></div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function renderGoals(goals) {
+  if (!goals || !goals.length) {
+    return '<div class="empty">ยังไม่มีเป้าหมาย ลองตั้งเป้า เช่น iPad 18000 ใน 6 เดือน</div>';
+  }
+  return `
+    <div class="goal-list">
+      ${goals.map((goal) => `
+        <div class="goal-row">
+          <div>
+            <strong>${escapeHtml(goal.name)}</strong>
+            <div class="tx-meta">ครบกำหนด ${escapeHtml(goal.displayDeadline)}</div>
+          </div>
+          <div class="goal-side">
+            <span>${goal.percent}%</span>
+            <small>เหลือ ${formatMoney(goal.remaining)}</small>
+          </div>
+        </div>
+      `).join('')}
+    </div>
   `;
 }
 
@@ -347,6 +522,16 @@ function bindEvents() {
   });
   document.getElementById('deleteEditBtn').addEventListener('click', handleDeleteEdit);
   document.getElementById('editForm').addEventListener('submit', handleSubmitEdit);
+  document.getElementById('closeBudgetModal').addEventListener('click', closeBudgetModal);
+  document.getElementById('budgetModal').addEventListener('click', (event) => {
+    if (event.target.id === 'budgetModal') closeBudgetModal();
+  });
+  document.getElementById('budgetForm').addEventListener('submit', handleSubmitBudget);
+  document.getElementById('closeGoalModal').addEventListener('click', closeGoalModal);
+  document.getElementById('goalModal').addEventListener('click', (event) => {
+    if (event.target.id === 'goalModal') closeGoalModal();
+  });
+  document.getElementById('goalForm').addEventListener('submit', handleSubmitGoal);
   document.getElementById('quickForm').addEventListener('submit', async (event) => {
     event.preventDefault();
     const value = document.getElementById('quickText').value.trim();
@@ -375,6 +560,14 @@ function scrollToSection(id) {
 }
 
 function openQuickModal(type) {
+  if (type === 'budget') {
+    openBudgetModal();
+    return;
+  }
+  if (type === 'goal') {
+    openGoalModal();
+    return;
+  }
   state.modalType = type;
   const isIncome = type === 'income';
   document.getElementById('modalTitle').textContent = isIncome ? 'บันทึกรายรับ' : 'บันทึกรายจ่าย';
@@ -394,6 +587,29 @@ function openQuickModal(type) {
 
 function closeQuickModal() {
   document.getElementById('quickModal').classList.remove('open');
+}
+
+function openBudgetModal() {
+  document.getElementById('budgetCategory').value = 'ทั้งหมด';
+  document.getElementById('budgetAmount').value = '';
+  document.getElementById('budgetModal').classList.add('open');
+  setTimeout(() => document.getElementById('budgetAmount').focus(), 50);
+}
+
+function closeBudgetModal() {
+  document.getElementById('budgetModal').classList.remove('open');
+}
+
+function openGoalModal() {
+  document.getElementById('goalName').value = '';
+  document.getElementById('goalAmount').value = '';
+  document.getElementById('goalMonths').value = '';
+  document.getElementById('goalModal').classList.add('open');
+  setTimeout(() => document.getElementById('goalName').focus(), 50);
+}
+
+function closeGoalModal() {
+  document.getElementById('goalModal').classList.remove('open');
 }
 
 function findTransaction(id) {
@@ -468,7 +684,53 @@ async function handleDeleteEdit() {
   }
 }
 
+async function handleSubmitBudget(event) {
+  event.preventDefault();
+  const saveBtn = document.getElementById('saveBudgetBtn');
+  saveBtn.disabled = true;
+  try {
+    await createDashboardBudget({
+      category: document.getElementById('budgetCategory').value || 'ทั้งหมด',
+      amount: document.getElementById('budgetAmount').value,
+      month: state.month
+    });
+  } catch (error) {
+    alert(error.message);
+  } finally {
+    if (document.getElementById('saveBudgetBtn')) {
+      document.getElementById('saveBudgetBtn').disabled = false;
+    }
+  }
+}
+
+async function handleSubmitGoal(event) {
+  event.preventDefault();
+  const saveBtn = document.getElementById('saveGoalBtn');
+  saveBtn.disabled = true;
+  try {
+    await createDashboardGoal({
+      name: document.getElementById('goalName').value,
+      targetAmount: document.getElementById('goalAmount').value,
+      months: document.getElementById('goalMonths').value
+    });
+  } catch (error) {
+    alert(error.message);
+  } finally {
+    if (document.getElementById('saveGoalBtn')) {
+      document.getElementById('saveGoalBtn').disabled = false;
+    }
+  }
+}
+
 async function handleCommand(command) {
+  if (command === 'export-month') {
+    try {
+      await downloadDashboardCsv('month');
+    } catch (error) {
+      alert(error.message);
+    }
+    return;
+  }
   if (command === 'slip-help') {
     await sendChatText('วิธีส่งสลิป');
     return;

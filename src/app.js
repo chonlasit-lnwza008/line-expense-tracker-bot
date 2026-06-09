@@ -150,6 +150,53 @@ app.delete('/api/liff/transactions/:id', async (req, res, next) => {
   }
 });
 
+app.post('/api/liff/budgets', express.json({ limit: '16kb' }), async (req, res, next) => {
+  try {
+    const lineUserId = await resolveLiffLineUserId(req);
+    const budget = await liffDashboardService.setBudgetFromDashboard(lineUserId, req.body || {});
+    res.status(201).json({ budget });
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        error: error.message,
+        reason: error.reason
+      });
+    }
+    next(error);
+  }
+});
+
+app.post('/api/liff/goals', express.json({ limit: '16kb' }), async (req, res, next) => {
+  try {
+    const lineUserId = await resolveLiffLineUserId(req);
+    const goal = await liffDashboardService.createGoalFromDashboard(lineUserId, req.body || {});
+    res.status(201).json({ goal });
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        error: error.message,
+        reason: error.reason
+      });
+    }
+    next(error);
+  }
+});
+
+app.get('/api/liff/export', async (req, res, next) => {
+  try {
+    const lineUserId = await resolveLiffLineUserId(req);
+    const csv = await liffDashboardService.exportCsv(lineUserId, req.query.scope);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="line-expense-export.csv"');
+    res.send(csv);
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+    next(error);
+  }
+});
+
 app.use('/webhook', webhookRouter);
 
 app.use((err, req, res, next) => {

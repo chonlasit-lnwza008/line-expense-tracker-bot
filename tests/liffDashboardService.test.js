@@ -101,3 +101,58 @@ test('LIFF dashboard delete cancels only the owner transaction', async () => {
   const overview = await liffDashboardService.getOverview(ownerLineUserId);
   assert.equal(overview.transactionCount, 0);
 });
+
+test('LIFF dashboard returns smart insights in overview', async () => {
+  await ensureDatabase();
+  const lineUserId = uniqueLineUserId('insights');
+
+  await liffDashboardService.createFromText(lineUserId, 'กาแฟ 45');
+  await liffDashboardService.createFromText(lineUserId, 'ข้าว 60');
+
+  const overview = await liffDashboardService.getOverview(lineUserId);
+  assert.ok(overview.smartInsights.headline);
+  assert.ok(Array.isArray(overview.smartInsights.recommendations));
+  assert.ok(overview.smartInsights.recommendations.some((item) => item.includes('กาแฟ')));
+});
+
+test('LIFF dashboard can set budget and return progress', async () => {
+  await ensureDatabase();
+  const lineUserId = uniqueLineUserId('budget');
+
+  await liffDashboardService.createFromText(lineUserId, 'ข้าว 60');
+  const budget = await liffDashboardService.setBudgetFromDashboard(lineUserId, {
+    category: 'อาหาร',
+    amount: 1000,
+    month: '2026-06'
+  });
+  assert.equal(budget.category, 'อาหาร');
+  assert.equal(budget.amount, 1000);
+
+  const overview = await liffDashboardService.getOverview(lineUserId, '2026-06');
+  assert.equal(overview.budgets.length, 1);
+  assert.equal(overview.budgets[0].category, 'อาหาร');
+  assert.equal(overview.budgets[0].spent, 60);
+  assert.equal(overview.budgets[0].percent, 6);
+});
+
+test('LIFF dashboard can create goal and export CSV', async () => {
+  await ensureDatabase();
+  const lineUserId = uniqueLineUserId('goal-export');
+
+  await liffDashboardService.createFromText(lineUserId, 'กาแฟ 45');
+  const goal = await liffDashboardService.createGoalFromDashboard(lineUserId, {
+    name: 'iPad',
+    targetAmount: 18000,
+    months: 6
+  });
+  assert.equal(goal.name, 'iPad');
+  assert.equal(goal.monthlySaving, 3000);
+
+  const overview = await liffDashboardService.getOverview(lineUserId);
+  assert.equal(overview.goals.length, 1);
+  assert.equal(overview.goals[0].name, 'iPad');
+
+  const csv = await liffDashboardService.exportCsv(lineUserId, 'month');
+  assert.match(csv, /date,type,title,category,amount,note,source/);
+  assert.match(csv, /กาแฟ/);
+});
