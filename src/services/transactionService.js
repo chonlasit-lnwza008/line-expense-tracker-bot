@@ -113,7 +113,7 @@ async function updateLatest(userId, patch, status = 'confirmed') {
   const latest = await getLatestTransaction(userId, status);
   if (!latest) return null;
 
-  const allowed = ['amount', 'category', 'title', 'note', 'transactionDate'];
+  const allowed = ['type', 'amount', 'category', 'title', 'note', 'transactionDate'];
   const entries = Object.entries(patch).filter(([key]) => allowed.includes(key));
   if (!entries.length) return latest;
 
@@ -131,7 +131,7 @@ async function updateTransaction(userId, id, patch) {
   const target = await getUserTransaction(userId, id);
   if (!target || target.status !== 'confirmed') return null;
 
-  const allowed = ['amount', 'category', 'title', 'note', 'transactionDate'];
+  const allowed = ['type', 'amount', 'category', 'title', 'note', 'transactionDate'];
   const entries = Object.entries(patch).filter(([key]) => allowed.includes(key));
   if (!entries.length) return target;
 

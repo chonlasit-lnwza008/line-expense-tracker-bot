@@ -124,4 +124,79 @@ async function createFromText(lineUserId, text) {
   return mapTransaction(normalizeTransaction(tx));
 }
 
-module.exports = { getOverview, createFromText };
+function normalizePatch(input = {}) {
+  const patch = {};
+
+  if (['income', 'expense', 'transfer'].includes(input.type)) {
+    patch.type = input.type;
+  }
+
+  if (input.amount !== undefined) {
+    const amount = Number(input.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      const error = new Error('Amount must be greater than zero');
+      error.statusCode = 400;
+      error.reason = 'invalid_amount';
+      throw error;
+    }
+    patch.amount = amount;
+  }
+
+  if (input.title !== undefined) {
+    const title = String(input.title || '').trim();
+    if (!title) {
+      const error = new Error('Title is required');
+      error.statusCode = 400;
+      error.reason = 'title_required';
+      throw error;
+    }
+    patch.title = title.slice(0, 120);
+  }
+
+  if (input.category !== undefined) {
+    patch.category = String(input.category || 'อื่นๆ').trim().slice(0, 80) || 'อื่นๆ';
+  }
+
+  if (input.note !== undefined) {
+    const note = String(input.note || '').trim();
+    patch.note = note ? note.slice(0, 500) : null;
+  }
+
+  if (input.transactionDate !== undefined) {
+    const transactionDate = String(input.transactionDate || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(transactionDate)) {
+      const error = new Error('Transaction date must use YYYY-MM-DD');
+      error.statusCode = 400;
+      error.reason = 'invalid_date';
+      throw error;
+    }
+    patch.transactionDate = transactionDate;
+  }
+
+  return patch;
+}
+
+async function updateFromDashboard(lineUserId, id, input) {
+  const user = await transactionService.findOrCreateUser(lineUserId);
+  const patch = normalizePatch(input);
+  if (!Object.keys(patch).length) {
+    const existing = await transactionService.getUserTransaction(user.id, Number(id));
+    return existing && existing.status === 'confirmed' ? mapTransaction(normalizeTransaction(existing)) : null;
+  }
+
+  const updated = await transactionService.updateTransaction(user.id, Number(id), patch);
+  return updated ? mapTransaction(normalizeTransaction(updated)) : null;
+}
+
+async function deleteFromDashboard(lineUserId, id) {
+  const user = await transactionService.findOrCreateUser(lineUserId);
+  const deleted = await transactionService.cancelConfirmedTransaction(user.id, Number(id));
+  return deleted ? mapTransaction(normalizeTransaction(deleted)) : null;
+}
+
+module.exports = {
+  getOverview,
+  createFromText,
+  updateFromDashboard,
+  deleteFromDashboard
+};

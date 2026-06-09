@@ -639,7 +639,30 @@ button:disabled {
   background: #f8fafc;
 }
 
-.sheet input:focus {
+.sheet select {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 13px 14px;
+  background: #f8fafc;
+}
+
+.sheet label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+
+.edit-sheet {
+  max-height: calc(100vh - 28px);
+  overflow-y: auto;
+}
+
+.sheet input:focus,
+.sheet select:focus {
   outline: none;
   border-color: var(--blue);
   background: #ffffff;
@@ -651,8 +674,13 @@ button:disabled {
   gap: 10px;
 }
 
+.sheet-actions.three {
+  grid-template-columns: 1fr 1fr 1.25fr;
+}
+
 .primary,
-.secondary {
+.secondary,
+.danger {
   border: 0;
   border-radius: 16px;
   padding: 14px;
@@ -661,7 +689,8 @@ button:disabled {
 }
 
 .primary:active,
-.secondary:active {
+.secondary:active,
+.danger:active {
   transform: scale(0.98);
 }
 
@@ -677,6 +706,11 @@ button:disabled {
 .secondary {
   background: #eef2f7;
   color: var(--ink);
+}
+
+.danger {
+  background: #fee2e2;
+  color: #b91c1c;
 }
 
 .loading {

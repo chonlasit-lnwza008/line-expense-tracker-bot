@@ -4,7 +4,8 @@ const state = {
   profile: null,
   data: null,
   month: new Date().toISOString().slice(0, 7),
-  modalType: 'expense'
+  modalType: 'expense',
+  editingTransaction: null
 };
 
 const money = new Intl.NumberFormat('th-TH', {
@@ -109,6 +110,37 @@ async function createDashboardTransaction(text) {
   return data.transaction;
 }
 
+async function updateDashboardTransaction(id, payload) {
+  const response = await fetch(`/api/liff/transactions/${encodeURIComponent(id)}?${liffQueryParams().toString()}`, {
+    method: 'PATCH',
+    headers: liffHeaders(true),
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'แก้ไขไม่สำเร็จ');
+  }
+  await loadOverview();
+  render();
+  alert('แก้ไขรายการแล้ว');
+  return data.transaction;
+}
+
+async function deleteDashboardTransaction(id) {
+  const response = await fetch(`/api/liff/transactions/${encodeURIComponent(id)}?${liffQueryParams().toString()}`, {
+    method: 'DELETE',
+    headers: liffHeaders()
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'ลบรายการไม่สำเร็จ');
+  }
+  await loadOverview();
+  render();
+  alert('ลบรายการแล้ว');
+  return data.transaction;
+}
+
 function render() {
   const data = state.data;
   const topCategory = data.categories[0] ? data.categories[0].category : 'ยังไม่มีหมวดเด่น';
@@ -172,7 +204,7 @@ function render() {
 
       <section id="edit" class="section-title">
         <h2>รายการย้อนหลัง 7 วัน</h2>
-        <button class="text-action" type="button" data-command="แก้/ลบล่าสุด">เปิดตัวเลือก</button>
+        <button class="text-action" type="button" data-scroll="edit">เลือกจากรายการด้านล่าง</button>
       </section>
       <section class="panel">
         ${renderTransactions(data.recentSevenDays)}
@@ -194,6 +226,28 @@ function render() {
         <div class="sheet-actions">
           <button class="secondary" type="button" id="closeModal">ยกเลิก</button>
           <button class="primary" type="submit" id="submitBtn">บันทึก</button>
+        </div>
+      </form>
+    </div>
+
+    <div id="editModal" class="modal">
+      <form class="sheet edit-sheet" id="editForm">
+        <h3>แก้ไขรายการ</h3>
+        <p class="sheet-hint">ปรับข้อมูลได้ทุกช่อง แล้วกดบันทึก</p>
+        <label>ชื่อรายการ<input id="editTitle" autocomplete="off"></label>
+        <label>ยอดเงิน<input id="editAmount" type="number" min="0.01" step="0.01"></label>
+        <label>ประเภท<select id="editType">
+          <option value="expense">รายจ่าย</option>
+          <option value="income">รายรับ</option>
+          <option value="transfer">โอนเงิน</option>
+        </select></label>
+        <label>หมวด<input id="editCategory" autocomplete="off"></label>
+        <label>วันที่<input id="editDate" type="date"></label>
+        <label>โน้ต<input id="editNote" autocomplete="off"></label>
+        <div class="sheet-actions three">
+          <button class="secondary" type="button" id="closeEditModal">ยกเลิก</button>
+          <button class="danger" type="button" id="deleteEditBtn">ลบ</button>
+          <button class="primary" type="submit" id="saveEditBtn">บันทึก</button>
         </div>
       </form>
     </div>
@@ -260,7 +314,7 @@ function renderTransactions(rows) {
             </div>
             <div class="tx-side">
               <div class="tx-amount ${typeClass}">${sign}${formatMoney(row.amount)}</div>
-              <button type="button" data-command="แก้/ลบล่าสุด" class="mini-action">จัดการ</button>
+              <button type="button" data-edit-id="${escapeHtml(row.id)}" class="mini-action">จัดการ</button>
             </div>
           </div>
         `;
@@ -279,11 +333,20 @@ function bindEvents() {
   document.querySelectorAll('[data-open]').forEach((button) => {
     button.addEventListener('click', () => openQuickModal(button.dataset.open));
   });
+  document.querySelectorAll('[data-edit-id]').forEach((button) => {
+    button.addEventListener('click', () => openEditModal(button.dataset.editId));
+  });
 
   document.getElementById('closeModal').addEventListener('click', closeQuickModal);
   document.getElementById('quickModal').addEventListener('click', (event) => {
     if (event.target.id === 'quickModal') closeQuickModal();
   });
+  document.getElementById('closeEditModal').addEventListener('click', closeEditModal);
+  document.getElementById('editModal').addEventListener('click', (event) => {
+    if (event.target.id === 'editModal') closeEditModal();
+  });
+  document.getElementById('deleteEditBtn').addEventListener('click', handleDeleteEdit);
+  document.getElementById('editForm').addEventListener('submit', handleSubmitEdit);
   document.getElementById('quickForm').addEventListener('submit', async (event) => {
     event.preventDefault();
     const value = document.getElementById('quickText').value.trim();
@@ -331,6 +394,78 @@ function openQuickModal(type) {
 
 function closeQuickModal() {
   document.getElementById('quickModal').classList.remove('open');
+}
+
+function findTransaction(id) {
+  const rows = [
+    ...((state.data && state.data.recentSevenDays) || []),
+    ...((state.data && state.data.recent) || [])
+  ];
+  return rows.find((row) => String(row.id) === String(id));
+}
+
+function openEditModal(id) {
+  const transaction = findTransaction(id);
+  if (!transaction) {
+    alert('ไม่พบรายการนี้ ลองโหลดหน้าใหม่อีกครั้ง');
+    return;
+  }
+
+  state.editingTransaction = transaction;
+  document.getElementById('editTitle').value = transaction.title || '';
+  document.getElementById('editAmount').value = Number(transaction.amount || 0);
+  document.getElementById('editType').value = transaction.type || 'expense';
+  document.getElementById('editCategory').value = transaction.category || 'อื่นๆ';
+  document.getElementById('editDate').value = transaction.transactionDate || '';
+  document.getElementById('editNote').value = transaction.note || '';
+  document.getElementById('editModal').classList.add('open');
+  setTimeout(() => document.getElementById('editTitle').focus(), 50);
+}
+
+function closeEditModal() {
+  state.editingTransaction = null;
+  document.getElementById('editModal').classList.remove('open');
+}
+
+async function handleSubmitEdit(event) {
+  event.preventDefault();
+  if (!state.editingTransaction) return;
+
+  const saveBtn = document.getElementById('saveEditBtn');
+  saveBtn.disabled = true;
+  try {
+    await updateDashboardTransaction(state.editingTransaction.id, {
+      title: document.getElementById('editTitle').value,
+      amount: document.getElementById('editAmount').value,
+      type: document.getElementById('editType').value,
+      category: document.getElementById('editCategory').value,
+      transactionDate: document.getElementById('editDate').value,
+      note: document.getElementById('editNote').value
+    });
+  } catch (error) {
+    alert(error.message);
+  } finally {
+    if (document.getElementById('saveEditBtn')) {
+      document.getElementById('saveEditBtn').disabled = false;
+    }
+  }
+}
+
+async function handleDeleteEdit() {
+  if (!state.editingTransaction) return;
+  if (!confirm(`ลบ "${state.editingTransaction.title}" ใช่ไหม?`)) return;
+
+  const deleteBtn = document.getElementById('deleteEditBtn');
+  deleteBtn.disabled = true;
+  try {
+    await deleteDashboardTransaction(state.editingTransaction.id);
+  } catch (error) {
+    alert(error.message);
+  } finally {
+    if (document.getElementById('deleteEditBtn')) {
+      document.getElementById('deleteEditBtn').disabled = false;
+    }
+  }
 }
 
 async function handleCommand(command) {

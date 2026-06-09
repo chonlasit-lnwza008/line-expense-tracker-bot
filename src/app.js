@@ -115,6 +115,41 @@ app.post('/api/liff/transactions', express.json({ limit: '32kb' }), async (req, 
   }
 });
 
+app.patch('/api/liff/transactions/:id', express.json({ limit: '32kb' }), async (req, res, next) => {
+  try {
+    const lineUserId = await resolveLiffLineUserId(req);
+    const transaction = await liffDashboardService.updateFromDashboard(lineUserId, req.params.id, req.body || {});
+    if (!transaction) {
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
+    res.json({ transaction });
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        error: error.message,
+        reason: error.reason
+      });
+    }
+    next(error);
+  }
+});
+
+app.delete('/api/liff/transactions/:id', async (req, res, next) => {
+  try {
+    const lineUserId = await resolveLiffLineUserId(req);
+    const transaction = await liffDashboardService.deleteFromDashboard(lineUserId, req.params.id);
+    if (!transaction) {
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
+    res.json({ transaction });
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+    next(error);
+  }
+});
+
 app.use('/webhook', webhookRouter);
 
 app.use((err, req, res, next) => {
