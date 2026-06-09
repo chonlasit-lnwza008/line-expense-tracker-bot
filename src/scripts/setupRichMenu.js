@@ -9,7 +9,18 @@ const ROW_HEIGHT = 843;
 const COLS = [833, 833, 834];
 const MENU_NAME = process.env.RICH_MENU_NAME || 'LINE Expense Tracker Menu';
 const LIFF_ID = process.env.LIFF_ID || '';
-const APP_URL = process.env.LIFF_URL || (LIFF_ID ? `https://liff.line.me/${LIFF_ID}` : process.env.DASHBOARD_URL || '');
+const APP_URL = resolveAppUrl();
+
+function resolveAppUrl() {
+  const configuredUrl = process.env.LIFF_URL || '';
+  const liffLauncherUrl = LIFF_ID ? `https://liff.line.me/${LIFF_ID}` : '';
+
+  if (configuredUrl && LIFF_ID && !configuredUrl.includes('liff.line.me') && /\/liff(?:[?#].*)?$/.test(configuredUrl)) {
+    return liffLauncherUrl;
+  }
+
+  return configuredUrl || liffLauncherUrl || process.env.DASHBOARD_URL || '';
+}
 
 const buttons = [
   { label: 'วันนี้', hint: 'สรุปยอด', message: 'สรุปวันนี้', color: '#0f766e', icon: 'calendar' },

@@ -157,7 +157,7 @@ The LIFF page shows monthly totals, spending by category, recent 7-day transacti
 npm run richmenu:setup
 ```
 
-ถ้าไม่ได้ตั้ง `LIFF_URL` แต่ตั้ง `LIFF_ID` ไว้แล้ว สคริปต์จะใช้ `https://liff.line.me/<LIFF_ID>` ให้อัตโนมัติสำหรับปุ่ม Dashboard.
+ถ้าไม่ได้ตั้ง `LIFF_URL` แต่ตั้ง `LIFF_ID` ไว้แล้ว สคริปต์จะใช้ `https://liff.line.me/<LIFF_ID>` ให้อัตโนมัติสำหรับปุ่ม Dashboard. ถ้าเผลอตั้ง `LIFF_URL` เป็น `https://your-render-url.onrender.com/liff` สคริปต์จะแปลงกลับเป็น `liff.line.me` ให้เมื่อมี `LIFF_ID`.
 
 สคริปต์จะสร้าง Rich Menu 6 ปุ่มและตั้งเป็น default ให้ผู้ใช้ทุกคน:
 
