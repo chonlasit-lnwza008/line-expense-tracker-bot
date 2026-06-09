@@ -481,6 +481,132 @@ button:disabled {
   white-space: nowrap;
 }
 
+.plan-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.plan-main,
+.plan-mini {
+  min-width: 0;
+  border-radius: 16px;
+  padding: 12px;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+}
+
+.plan-main {
+  grid-column: 1 / -1;
+  background: #e6f7f1;
+  border-color: rgba(21, 168, 107, 0.2);
+}
+
+.plan-main.over {
+  background: #fff1f2;
+  border-color: rgba(226, 70, 89, 0.22);
+}
+
+.plan-grid span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  margin-bottom: 5px;
+}
+
+.plan-grid strong {
+  display: block;
+  font-size: clamp(13px, 4vw, 18px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.report-card {
+  display: grid;
+  gap: 13px;
+}
+
+.report-head {
+  display: grid;
+  gap: 4px;
+}
+
+.report-head span,
+.report-subtitle {
+  color: #0f766e;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.report-head strong {
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.report-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.report-stats div {
+  min-width: 0;
+  border-radius: 14px;
+  background: #f8fafc;
+  padding: 10px;
+}
+
+.report-stats span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.report-stats strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.report-list {
+  display: grid;
+  gap: 8px;
+}
+
+.report-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+
+.report-row > div {
+  min-width: 0;
+}
+
+.report-row strong,
+.report-row span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-row span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.report-row b {
+  white-space: nowrap;
+}
+
 .budget-list,
 .goal-list {
   display: grid;
@@ -498,7 +624,7 @@ button:disabled {
 .budget-top,
 .goal-row {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: space-between;
   gap: 10px;
 }
@@ -513,27 +639,63 @@ button:disabled {
   margin: 4px 0 8px;
 }
 
-.goal-row > div:first-child {
+.goal-main {
   min-width: 0;
+  flex: 1;
 }
 
-.goal-row strong {
+.goal-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.goal-heading strong {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.goal-side {
-  display: grid;
-  justify-items: end;
-  gap: 3px;
+.goal-heading span {
+  color: var(--green);
+  font-weight: 900;
   flex-shrink: 0;
 }
 
-.goal-side span {
-  color: var(--green);
-  font-weight: 900;
+.goal-progress {
+  height: 10px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  overflow: hidden;
+  margin: 8px 0 6px;
+}
+
+.goal-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #16a34a, #22c55e, #84cc16);
+  transition: width 180ms ease;
+}
+
+.goal-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.goal-save-btn {
+  align-self: center;
+  white-space: nowrap;
+}
+
+.goal-save-btn:disabled {
+  opacity: 0.7;
+  cursor: default;
 }
 
 /* Category chart */
@@ -754,6 +916,13 @@ button:disabled {
   justify-items: end;
 }
 
+.tx-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
 .mini-action {
   border: 0;
   border-radius: 999px;
@@ -769,6 +938,11 @@ button:disabled {
   transform: scale(0.95);
 }
 
+.mini-action.ghost {
+  background: #e6f7f1;
+  color: #087a4d;
+}
+
 .income-text { color: var(--green); }
 .expense-text { color: var(--red); }
 
@@ -776,6 +950,10 @@ button:disabled {
   color: var(--muted);
   text-align: center;
   padding: 20px 8px;
+}
+
+.empty.compact {
+  padding: 10px 4px;
 }
 
 /* Tabbar */
@@ -931,6 +1109,30 @@ button:disabled {
 .edit-sheet {
   max-height: calc(100vh - 28px);
   overflow-y: auto;
+}
+
+.image-sheet {
+  max-height: calc(100vh - 28px);
+  overflow-y: auto;
+}
+
+.image-preview {
+  display: grid;
+  place-items: center;
+  min-height: 180px;
+  border-radius: 18px;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+
+.image-preview img {
+  display: block;
+  width: 100%;
+  max-height: 70vh;
+  object-fit: contain;
 }
 
 .sheet input:focus,

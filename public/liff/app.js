@@ -6,7 +6,9 @@ const state = {
   month: new Date().toISOString().slice(0, 7),
   modalType: 'expense',
   editingTransaction: null,
+  savingGoal: null,
   transactionFilter: {
+    period: 'month',
     type: 'all',
     category: 'all',
     search: ''
@@ -28,6 +30,15 @@ const STANDARD_CATEGORIES = [
   'การศึกษา',
   'รายรับ',
   'อื่นๆ'
+];
+
+const CATEGORY_SUGGESTIONS = [
+  { category: 'เครื่องดื่ม', keywords: ['กาแฟ', 'coffee', 'ชา', 'ชานม', 'โกโก้', 'น้ำ', 'โค้ก', 'เต่าบิน', 'taobin'] },
+  { category: 'อาหาร', keywords: ['ข้าว', 'อาหาร', 'ก๋วยเตี๋ยว', 'หมูกระทะ', 'ขนม', 'ของกินเล่น'] },
+  { category: 'เดินทาง', keywords: ['น้ำมัน', 'bts', 'mrt', 'รถ', 'แท็กซี่', 'taxi', 'grab'] },
+  { category: 'บิลประจำ', keywords: ['ค่าไฟ', 'ค่าน้ำ', 'ค่าเน็ต', 'โทรศัพท์', 'บุญเติม', 'boonterm'] },
+  { category: 'สิ่งใช้ประจำวัน', keywords: ['ทิชชู่', 'ยาสีฟัน', 'น้ำยาซักผ้า', 'น้ำยาล้างจาน', 'ถุงขยะ'] },
+  { category: 'ของใช้', keywords: ['homepro', 'โฮมโปร', 'เสื้อ', 'รองเท้า', 'ซื้อของ', 'แชมพู', 'สบู่'] }
 ];
 
 const money = new Intl.NumberFormat('th-TH', {
@@ -68,7 +79,8 @@ function profilePicture() {
 async function init() {
   showLoading();
 
-  if (config.liffId && window.liff) {
+  const debugMode = Boolean(config.dashboardToken && config.debugLineUserId);
+  if (!debugMode && config.liffId && window.liff) {
     await liff.init({ liffId: config.liffId });
     if (!liff.isLoggedIn()) {
       liff.login();
@@ -142,9 +154,6 @@ async function updateDashboardTransaction(id, payload) {
   if (!response.ok) {
     throw new Error(data.error || 'แก้ไขไม่สำเร็จ');
   }
-  await loadOverview();
-  render();
-  alert('แก้ไขรายการแล้ว');
   return data.transaction;
 }
 
@@ -157,9 +166,6 @@ async function deleteDashboardTransaction(id) {
   if (!response.ok) {
     throw new Error(data.error || 'ลบรายการไม่สำเร็จ');
   }
-  await loadOverview();
-  render();
-  alert('ลบรายการแล้ว');
   return data.transaction;
 }
 
@@ -192,6 +198,23 @@ async function createDashboardGoal(payload) {
   await loadOverview();
   render();
   alert(`ตั้งเป้าแล้ว ต้องเก็บประมาณ ${formatMoney(data.goal.monthlySaving)}/เดือน`);
+  return data.goal;
+}
+
+async function addDashboardGoalSaving(id, payload) {
+  const response = await fetch(`/api/liff/goals/${encodeURIComponent(id)}/savings?${liffQueryParams().toString()}`, {
+    method: 'POST',
+    headers: liffHeaders(true),
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'ออมเข้าเป้าไม่สำเร็จ');
+  }
+  upsertLocalGoal(data.goal);
+  render();
+  refreshOverviewQuietly();
+  alert(data.goal.percent >= 100 ? 'ถึงเป้าหมายแล้ว เก่งมาก!' : `ออมเพิ่มแล้ว: ${formatMoney(data.savedAmount)}`);
   return data.goal;
 }
 
@@ -268,7 +291,7 @@ function render() {
         ${menuCard('slip', 'สลิป', 'ส่งสลิป/บิล', 'ตรวจ QR', 'slip-help')}
         ${menuCard('today', 'วันนี้', 'สรุปวันนี้', 'ยอดรวม', 'สรุปวันนี้')}
         ${menuCard('chart', 'กราฟ', 'กราฟรายจ่าย', 'ตามหมวด', 'scroll-chart')}
-        ${menuCard('edit', 'แก้', 'แก้ไข 7 วัน', 'รายการล่าสุด', 'scroll-edit')}
+        ${menuCard('edit', 'แก้', 'รายการเดือนนี้', 'กรอง/แก้/ลบ', 'scroll-edit')}
         ${menuCard('budget', 'งบ', 'ตั้งงบ', 'คุมใช้จ่าย', 'open-budget')}
         ${menuCard('goal', 'เป้า', 'ตั้งเป้า', 'เงินเก็บ', 'open-goal')}
         ${menuCard('export', 'CSV', 'Export', 'เปิด Excel', 'export-month')}
@@ -282,6 +305,14 @@ function render() {
         <div><span>รับวันนี้</span><strong class="income-text">${formatMoney(data.todayTotals.income)}</strong></div>
         <div><span>จ่ายวันนี้</span><strong class="expense-text">${formatMoney(data.todayTotals.expense)}</strong></div>
         <div><span>สุทธิวันนี้</span><strong>${formatMoney(data.todayTotals.net)}</strong></div>
+      </section>
+
+      <section class="section-title">
+        <h2>เป้าหมายเดือนนี้</h2>
+        <small>ใช้ได้อีกเท่าไหร่</small>
+      </section>
+      <section class="panel">
+        ${renderSpendingPlan(data.spendingPlan)}
       </section>
 
       <section class="section-title">
@@ -308,13 +339,21 @@ function render() {
         ${renderCategoryBars(data.categories)}
       </section>
 
+      <section class="section-title">
+        <h2>รายงานเดือนนี้</h2>
+        <small>สรุปพร้อมคำแนะนำ</small>
+      </section>
+      <section class="panel report-card">
+        ${renderMonthlyReport(data.monthlyReport)}
+      </section>
+
       <section id="edit" class="section-title">
-        <h2>รายการย้อนหลัง 7 วัน</h2>
-        <button class="text-action" type="button" data-scroll="edit">เลือกจากรายการด้านล่าง</button>
+        <h2>รายการเดือนนี้</h2>
+        <button class="text-action" type="button" data-scroll="edit">กรองแล้วจัดการได้เลย</button>
       </section>
       <section class="panel">
-        ${renderTransactionFilters(data.recentSevenDays)}
-        ${renderTransactions(getFilteredTransactions(data.recentSevenDays))}
+        ${renderTransactionFilters(data.transactions || data.recentSevenDays)}
+        ${renderTransactions(getFilteredTransactions(data.transactions || data.recentSevenDays))}
       </section>
     </main>
 
@@ -386,6 +425,29 @@ function render() {
         </div>
       </form>
     </div>
+
+    <div id="goalSavingModal" class="modal">
+      <form class="sheet" id="goalSavingForm">
+        <h3 id="goalSavingTitle">ออมเข้าเป้า</h3>
+        <p class="sheet-hint" id="goalSavingHint">กรอกยอดที่เก็บเพิ่ม ระบบจะอัปเดตความคืบหน้าให้ทันที</p>
+        <label>ยอดที่ออมเพิ่ม<input id="goalSavingAmount" type="number" min="1" step="1" placeholder="500"></label>
+        <div class="sheet-actions">
+          <button class="secondary" type="button" id="closeGoalSavingModal">ยกเลิก</button>
+          <button class="primary" type="submit" id="saveGoalSavingBtn">บันทึกยอดออม</button>
+        </div>
+      </form>
+    </div>
+
+    <div id="imageModal" class="modal">
+      <div class="sheet image-sheet">
+        <h3>รูปแนบรายการ</h3>
+        <p class="sheet-hint">สลิป/บิลเดิมที่ใช้บันทึกรายการนี้</p>
+        <div id="imagePreview" class="image-preview">กำลังโหลดรูป</div>
+        <div class="sheet-actions">
+          <button class="secondary" type="button" id="closeImageModal">ปิด</button>
+        </div>
+      </div>
+    </div>
   `;
 
   bindEvents();
@@ -441,6 +503,27 @@ function setCategoryValue(id, value) {
   }
 }
 
+function suggestCategoryFromText(text = '') {
+  const normalized = text.toLowerCase();
+  const match = CATEGORY_SUGGESTIONS.find((rule) => (
+    rule.keywords.some((keyword) => normalized.includes(keyword.toLowerCase()))
+  ));
+  return match ? match.category : '';
+}
+
+function maybeSuggestEditCategory() {
+  const title = document.getElementById('editTitle');
+  const type = document.getElementById('editType');
+  const category = document.getElementById('editCategory');
+  if (!title || !type || !category || type.value !== 'expense') return;
+
+  const suggestion = suggestCategoryFromText(title.value);
+  const weakCategories = ['อาหาร', 'อื่นๆ', 'ของใช้'];
+  if (suggestion && (weakCategories.includes(category.value) || !category.value)) {
+    setCategoryValue('editCategory', suggestion);
+  }
+}
+
 function bindCategoryPickers() {
   document.querySelectorAll('[data-category-target]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -478,6 +561,67 @@ function renderSmartInsights(smartInsights) {
   `;
 }
 
+function renderSpendingPlan(plan = {}) {
+  const hasBudget = Number(plan.budgetAmount || 0) > 0;
+  const remaining = Number(plan.remainingExpense || 0);
+  const statusText = plan.status === 'over'
+    ? `เกินงบแล้ว ${formatMoney(Math.abs(remaining))}`
+    : `ยังใช้ได้อีก ${formatMoney(remaining)}`;
+  return `
+    <div class="plan-grid">
+      <div class="plan-main ${plan.status === 'over' ? 'over' : ''}">
+        <span>${hasBudget ? 'งบเดือนนี้' : 'ประเมินจากรายรับสุทธิ'}</span>
+        <strong>${statusText}</strong>
+      </div>
+      <div class="plan-mini">
+        <span>ใช้ได้ต่อวัน</span>
+        <strong>${formatMoney(plan.dailyAllowance || 0)}</strong>
+      </div>
+      <div class="plan-mini">
+        <span>เหลือในเดือน</span>
+        <strong>${money.format(plan.daysLeft || 1)} วัน</strong>
+      </div>
+      <div class="plan-mini">
+        <span>เป้าเงินเหลือ</span>
+        <strong>${formatMoney(plan.targetNet || 0)}</strong>
+      </div>
+    </div>
+  `;
+}
+
+function renderMonthlyReport(report = {}) {
+  const totals = report.totals || {};
+  const tips = report.tips || [];
+  const topItems = report.topItems || [];
+  return `
+    <div class="report-head">
+      <span>ภาพรวมเดือนนี้</span>
+      <strong>${escapeHtml(report.headline || 'ยังไม่มีข้อมูลพอสำหรับรายงาน')}</strong>
+    </div>
+    <div class="report-stats">
+      <div><span>รับ</span><strong class="income-text">${formatMoney(totals.income)}</strong></div>
+      <div><span>จ่าย</span><strong class="expense-text">${formatMoney(totals.expense)}</strong></div>
+      <div><span>คงเหลือ</span><strong>${formatMoney(totals.net)}</strong></div>
+    </div>
+    <div class="report-subtitle">รายการจ่ายก้อนใหญ่</div>
+    <div class="report-list">
+      ${topItems.length ? topItems.map((item) => `
+        <div class="report-row">
+          <div>
+            <strong>${escapeHtml(item.title)}</strong>
+            <span>${escapeHtml(item.displayDate)} · ${escapeHtml(item.category)}</span>
+          </div>
+          <b>${formatMoney(item.amount)}</b>
+        </div>
+      `).join('') : '<div class="empty compact">ยังไม่มีรายจ่ายเดือนนี้</div>'}
+    </div>
+    <div class="report-subtitle">คำแนะนำ</div>
+    <div class="smart-list">
+      ${tips.length ? tips.map((tip) => `<div class="smart-item">${escapeHtml(tip)}</div>`).join('') : '<div class="smart-item">บันทึกเพิ่มอีกนิด ระบบจะเริ่มเห็นพฤติกรรมใช้เงินชัดขึ้น</div>'}
+    </div>
+  `;
+}
+
 function renderBudgets(budgets) {
   if (!budgets || !budgets.length) {
     return '<div class="empty">ยังไม่มีงบประมาณ กดตั้งงบเพื่อให้ระบบช่วยเตือน</div>';
@@ -508,18 +652,29 @@ function renderGoals(goals) {
   }
   return `
     <div class="goal-list">
-      ${goals.map((goal) => `
-        <div class="goal-row">
-          <div>
-            <strong>${escapeHtml(goal.name)}</strong>
-            <div class="tx-meta">ครบกำหนด ${escapeHtml(goal.displayDeadline)}</div>
+      ${goals.map((goal) => {
+        const percent = Math.min(Math.max(Number(goal.percent || 0), 0), 100);
+        const completed = percent >= 100;
+        return `
+          <div class="goal-row">
+            <div class="goal-main">
+              <div class="goal-heading">
+                <strong>${escapeHtml(goal.name)}</strong>
+                <span>${percent}%</span>
+              </div>
+              <div class="goal-progress" aria-label="ความคืบหน้า ${percent}%">
+                <div class="goal-progress-fill" style="width:${percent}%"></div>
+              </div>
+              <div class="goal-meta">
+                <span>เก็บแล้ว ${formatMoney(goal.currentAmount)}</span>
+                <span>เหลือ ${formatMoney(goal.remaining)}</span>
+              </div>
+              <div class="tx-meta">ครบกำหนด ${escapeHtml(goal.displayDeadline)}</div>
+            </div>
+            <button class="mini-action goal-save-btn" type="button" data-goal-save-id="${escapeHtml(goal.id)}" ${completed ? 'disabled' : ''}>${completed ? 'ถึงเป้าแล้ว' : 'ออมเข้าเป้า'}</button>
           </div>
-          <div class="goal-side">
-            <span>${goal.percent}%</span>
-            <small>เหลือ ${formatMoney(goal.remaining)}</small>
-          </div>
-        </div>
-      `).join('')}
+        `;
+      }).join('')}
     </div>
   `;
 }
@@ -557,11 +712,33 @@ function uniqueTransactionCategories(rows) {
 function getFilteredTransactions(rows) {
   const query = state.transactionFilter.search.trim().toLowerCase();
   return rows.filter((row) => {
+    const periodMatches = matchesPeriod(row);
     const typeMatches = state.transactionFilter.type === 'all' || row.type === state.transactionFilter.type;
     const categoryMatches = state.transactionFilter.category === 'all' || row.category === state.transactionFilter.category;
     const searchMatches = !query || `${row.title || ''} ${row.category || ''} ${row.note || ''}`.toLowerCase().includes(query);
-    return typeMatches && categoryMatches && searchMatches;
+    return periodMatches && typeMatches && categoryMatches && searchMatches;
   });
+}
+
+function matchesPeriod(row) {
+  const period = state.transactionFilter.period || 'month';
+  if (period === 'month') return true;
+  const date = String(row.transactionDate || '').slice(0, 10);
+  const today = state.data && state.data.today ? state.data.today : new Date().toISOString().slice(0, 10);
+  if (period === 'today') return date === today;
+  if (period === '7d') {
+    const from = new Date(`${today}T00:00:00+07:00`);
+    from.setDate(from.getDate() - 6);
+    return date >= formatDateOnly(from) && date <= today;
+  }
+  return true;
+}
+
+function formatDateOnly(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function filteredSummary(rows) {
@@ -580,6 +757,11 @@ function renderTransactionFilters(rows) {
   const summary = filteredSummary(filteredRows);
   return `
     <div class="filter-panel">
+      <div class="filter-row">
+        ${filterButton('period', 'today', 'วันนี้')}
+        ${filterButton('period', '7d', '7 วัน')}
+        ${filterButton('period', 'month', 'เดือนนี้')}
+      </div>
       <div class="filter-row">
         ${filterButton('type', 'all', 'ทั้งหมด')}
         ${filterButton('type', 'income', 'รายรับ')}
@@ -608,7 +790,7 @@ function filterButton(kind, value, label) {
 }
 
 function renderTransactions(rows) {
-  if (!rows.length) return '<div class="empty">ยังไม่มีรายการใน 7 วันล่าสุด</div>';
+  if (!rows.length) return '<div class="empty">ไม่พบรายการตามตัวกรองนี้</div>';
   return `
     <div class="transaction-list">
       ${rows.map((row) => {
@@ -627,7 +809,10 @@ function renderTransactions(rows) {
             </div>
             <div class="tx-side">
               <div class="tx-amount ${typeClass}">${sign}${formatMoney(row.amount)}</div>
-              <button type="button" data-edit-id="${escapeHtml(row.id)}" class="mini-action">จัดการ</button>
+              <div class="tx-actions">
+                ${row.hasImage ? `<button type="button" data-image-id="${escapeHtml(row.id)}" class="mini-action ghost">ดูรูป</button>` : ''}
+                <button type="button" data-edit-id="${escapeHtml(row.id)}" class="mini-action">จัดการ</button>
+              </div>
             </div>
           </div>
         `;
@@ -648,6 +833,12 @@ function bindEvents() {
   });
   document.querySelectorAll('[data-edit-id]').forEach((button) => {
     button.addEventListener('click', () => openEditModal(button.dataset.editId));
+  });
+  document.querySelectorAll('[data-image-id]').forEach((button) => {
+    button.addEventListener('click', () => openImageModal(button.dataset.imageId));
+  });
+  document.querySelectorAll('[data-goal-save-id]').forEach((button) => {
+    button.addEventListener('click', () => openGoalSavingModal(button.dataset.goalSaveId));
   });
   document.querySelectorAll('[data-filter-kind]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -681,6 +872,8 @@ function bindEvents() {
   });
   document.getElementById('deleteEditBtn').addEventListener('click', handleDeleteEdit);
   document.getElementById('editForm').addEventListener('submit', handleSubmitEdit);
+  document.getElementById('editTitle').addEventListener('input', maybeSuggestEditCategory);
+  document.getElementById('editType').addEventListener('change', maybeSuggestEditCategory);
   document.getElementById('closeBudgetModal').addEventListener('click', closeBudgetModal);
   document.getElementById('budgetModal').addEventListener('click', (event) => {
     if (event.target.id === 'budgetModal') closeBudgetModal();
@@ -691,6 +884,15 @@ function bindEvents() {
     if (event.target.id === 'goalModal') closeGoalModal();
   });
   document.getElementById('goalForm').addEventListener('submit', handleSubmitGoal);
+  document.getElementById('closeGoalSavingModal').addEventListener('click', closeGoalSavingModal);
+  document.getElementById('goalSavingModal').addEventListener('click', (event) => {
+    if (event.target.id === 'goalSavingModal') closeGoalSavingModal();
+  });
+  document.getElementById('goalSavingForm').addEventListener('submit', handleSubmitGoalSaving);
+  document.getElementById('closeImageModal').addEventListener('click', closeImageModal);
+  document.getElementById('imageModal').addEventListener('click', (event) => {
+    if (event.target.id === 'imageModal') closeImageModal();
+  });
   document.getElementById('quickForm').addEventListener('submit', async (event) => {
     event.preventDefault();
     const value = document.getElementById('quickText').value.trim();
@@ -774,12 +976,107 @@ function closeGoalModal() {
   document.getElementById('goalModal').classList.remove('open');
 }
 
+function openGoalSavingModal(id) {
+  const goal = findGoal(id);
+  if (!goal) return;
+  state.savingGoal = goal;
+  document.getElementById('goalSavingTitle').textContent = `ออมเข้าเป้า: ${goal.name}`;
+  document.getElementById('goalSavingHint').textContent = `เก็บแล้ว ${formatMoney(goal.currentAmount)} เหลือ ${formatMoney(goal.remaining)}`;
+  document.getElementById('goalSavingAmount').value = '';
+  document.getElementById('goalSavingModal').classList.add('open');
+  setTimeout(() => document.getElementById('goalSavingAmount').focus(), 50);
+}
+
+function closeGoalSavingModal() {
+  document.getElementById('goalSavingModal').classList.remove('open');
+  state.savingGoal = null;
+}
+
+function findGoal(id) {
+  const goals = (state.data && state.data.goals) || [];
+  return goals.find((goal) => String(goal.id) === String(id));
+}
+
+function upsertLocalGoal(goal) {
+  if (!state.data || !goal) return;
+  if (!Array.isArray(state.data.goals)) {
+    state.data.goals = [goal];
+    return;
+  }
+  const index = state.data.goals.findIndex((item) => String(item.id) === String(goal.id));
+  if (index >= 0) {
+    state.data.goals[index] = { ...state.data.goals[index], ...goal };
+  } else {
+    state.data.goals.push(goal);
+  }
+}
+
 function findTransaction(id) {
   const rows = [
+    ...((state.data && state.data.transactions) || []),
     ...((state.data && state.data.recentSevenDays) || []),
     ...((state.data && state.data.recent) || [])
   ];
   return rows.find((row) => String(row.id) === String(id));
+}
+
+function upsertLocalTransaction(transaction) {
+  if (!state.data || !transaction) return;
+  ['transactions', 'recentSevenDays', 'recent'].forEach((key) => {
+    if (!Array.isArray(state.data[key])) return;
+    state.data[key] = state.data[key].map((row) => (
+      String(row.id) === String(transaction.id) ? { ...row, ...transaction } : row
+    ));
+  });
+}
+
+function removeLocalTransaction(id) {
+  if (!state.data) return;
+  ['transactions', 'recentSevenDays', 'recent'].forEach((key) => {
+    if (!Array.isArray(state.data[key])) return;
+    state.data[key] = state.data[key].filter((row) => String(row.id) !== String(id));
+  });
+}
+
+async function refreshOverviewQuietly() {
+  try {
+    await loadOverview();
+    render();
+  } catch (error) {
+    console.warn('Unable to refresh dashboard overview', error);
+  }
+}
+
+async function openImageModal(id) {
+  const transaction = findTransaction(id);
+  if (!transaction || !transaction.imageUrl) {
+    alert('รายการนี้ไม่มีรูปแนบ');
+    return;
+  }
+
+  const modal = document.getElementById('imageModal');
+  const preview = document.getElementById('imagePreview');
+  modal.classList.add('open');
+  preview.textContent = 'กำลังโหลดรูป';
+
+  try {
+    const response = await fetch(`${transaction.imageUrl}?${liffQueryParams().toString()}`, {
+      headers: liffHeaders()
+    });
+    if (!response.ok) throw new Error('โหลดรูปไม่สำเร็จ');
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    preview.innerHTML = `<img src="${url}" alt="รูปแนบรายการ">`;
+  } catch (error) {
+    preview.textContent = error.message;
+  }
+}
+
+function closeImageModal() {
+  const preview = document.getElementById('imagePreview');
+  const image = preview && preview.querySelector('img');
+  if (image && image.src.startsWith('blob:')) URL.revokeObjectURL(image.src);
+  document.getElementById('imageModal').classList.remove('open');
 }
 
 function openEditModal(id) {
@@ -796,6 +1093,7 @@ function openEditModal(id) {
   setCategoryValue('editCategory', transaction.category || 'อื่นๆ');
   document.getElementById('editDate').value = transaction.transactionDate || '';
   document.getElementById('editNote').value = transaction.note || '';
+  maybeSuggestEditCategory();
   document.getElementById('editModal').classList.add('open');
   setTimeout(() => document.getElementById('editTitle').focus(), 50);
 }
@@ -812,7 +1110,7 @@ async function handleSubmitEdit(event) {
   const saveBtn = document.getElementById('saveEditBtn');
   saveBtn.disabled = true;
   try {
-    await updateDashboardTransaction(state.editingTransaction.id, {
+    const updated = await updateDashboardTransaction(state.editingTransaction.id, {
       title: document.getElementById('editTitle').value,
       amount: document.getElementById('editAmount').value,
       type: document.getElementById('editType').value,
@@ -820,6 +1118,10 @@ async function handleSubmitEdit(event) {
       transactionDate: document.getElementById('editDate').value,
       note: document.getElementById('editNote').value
     });
+    upsertLocalTransaction(updated);
+    closeEditModal();
+    render();
+    refreshOverviewQuietly();
   } catch (error) {
     alert(error.message);
   } finally {
@@ -836,7 +1138,12 @@ async function handleDeleteEdit() {
   const deleteBtn = document.getElementById('deleteEditBtn');
   deleteBtn.disabled = true;
   try {
-    await deleteDashboardTransaction(state.editingTransaction.id);
+    const deletedId = state.editingTransaction.id;
+    await deleteDashboardTransaction(deletedId);
+    removeLocalTransaction(deletedId);
+    closeEditModal();
+    render();
+    refreshOverviewQuietly();
   } catch (error) {
     alert(error.message);
   } finally {
@@ -880,6 +1187,25 @@ async function handleSubmitGoal(event) {
   } finally {
     if (document.getElementById('saveGoalBtn')) {
       document.getElementById('saveGoalBtn').disabled = false;
+    }
+  }
+}
+
+async function handleSubmitGoalSaving(event) {
+  event.preventDefault();
+  if (!state.savingGoal) return;
+  const saveBtn = document.getElementById('saveGoalSavingBtn');
+  saveBtn.disabled = true;
+  try {
+    await addDashboardGoalSaving(state.savingGoal.id, {
+      amount: document.getElementById('goalSavingAmount').value
+    });
+    closeGoalSavingModal();
+  } catch (error) {
+    alert(error.message);
+  } finally {
+    if (document.getElementById('saveGoalSavingBtn')) {
+      document.getElementById('saveGoalSavingBtn').disabled = false;
     }
   }
 }

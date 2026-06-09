@@ -149,6 +149,22 @@ If a phone opens `https://your-render-url.onrender.com/liff` directly inside LIN
 
 The LIFF page shows monthly totals, spending by category, recent 7-day transactions, and quick buttons that send normal bot commands back into the chat.
 
+## Daily Reminder
+
+Run this command to push a short daily summary to every LINE user in the database:
+
+```bash
+npm run reminder:daily
+```
+
+Optional date override:
+
+```bash
+npm run reminder:daily -- 2026-06-09
+```
+
+For production, schedule it with Render Cron, GitHub Actions, Windows Task Scheduler, or Google Cloud Scheduler. Reminder messages use LINE push messages, so they count against your LINE Messaging API quota.
+
 ## LINE Rich Menu
 
 ตั้งค่า `LINE_CHANNEL_ACCESS_TOKEN`, `LIFF_ID`, และ `LIFF_URL=https://liff.line.me/your-liff-id` ก่อน จากนั้นรัน:

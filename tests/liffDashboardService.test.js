@@ -11,6 +11,7 @@ process.env.DATABASE_PATH = path.join(
 
 const { ensureDatabase } = require('../src/database/migrations');
 const liffDashboardService = require('../src/services/liffDashboardService');
+const transactionService = require('../src/services/transactionService');
 
 function uniqueLineUserId(suffix) {
   return `liff-dashboard-${suffix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -151,8 +152,63 @@ test('LIFF dashboard can create goal and export CSV', async () => {
   const overview = await liffDashboardService.getOverview(lineUserId);
   assert.equal(overview.goals.length, 1);
   assert.equal(overview.goals[0].name, 'iPad');
+  assert.equal(overview.goals[0].percent, 0);
+
+  const saving = await liffDashboardService.addGoalSavingFromDashboard(lineUserId, goal.id, {
+    amount: 1500
+  });
+  assert.equal(saving.goal.currentAmount, 1500);
+  assert.equal(saving.goal.remaining, 16500);
+  assert.equal(saving.goal.percent, 8);
+
+  const cappedSaving = await liffDashboardService.addGoalSavingFromDashboard(lineUserId, goal.id, {
+    amount: 99999
+  });
+  assert.equal(cappedSaving.goal.currentAmount, 18000);
+  assert.equal(cappedSaving.goal.remaining, 0);
+  assert.equal(cappedSaving.goal.percent, 100);
+  assert.equal(cappedSaving.capped, true);
 
   const csv = await liffDashboardService.exportCsv(lineUserId, 'month');
   assert.match(csv, /date,type,title,category,amount,note,source/);
   assert.match(csv, /กาแฟ/);
+});
+
+test('LIFF dashboard returns monthly transactions, report, spending plan, and image metadata', async () => {
+  await ensureDatabase();
+  const lineUserId = uniqueLineUserId('monthly-tools');
+  const user = await transactionService.findOrCreateUser(lineUserId);
+
+  await transactionService.createTransaction(user.id, {
+    type: 'income',
+    amount: 3000,
+    title: 'เงินเดือน',
+    category: 'รายรับ',
+    date: '2026-06-01',
+    source: 'text'
+  }, 'confirmed');
+  const imageTransaction = await transactionService.createTransaction(user.id, {
+    type: 'expense',
+    amount: 850,
+    title: 'ของใช้',
+    category: 'สิ่งใช้ประจำวัน',
+    date: '2026-06-02',
+    source: 'slip',
+    imagePath: path.join(os.tmpdir(), 'fake-slip.jpg')
+  }, 'confirmed');
+
+  await liffDashboardService.setBudgetFromDashboard(lineUserId, {
+    category: 'ทั้งหมด',
+    amount: 2000,
+    month: '2026-06'
+  });
+
+  const overview = await liffDashboardService.getOverview(lineUserId, '2026-06');
+  assert.equal(overview.transactions.length, 2);
+  assert.equal(overview.spendingPlan.budgetAmount, 2000);
+  assert.ok(overview.monthlyReport.topItems.some((item) => item.title === 'ของใช้'));
+
+  const mapped = overview.transactions.find((row) => row.id === imageTransaction.id);
+  assert.equal(mapped.hasImage, true);
+  assert.match(mapped.imageUrl, new RegExp(`/api/liff/transactions/${imageTransaction.id}/image`));
 });

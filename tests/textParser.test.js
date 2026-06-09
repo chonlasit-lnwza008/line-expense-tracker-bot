@@ -17,7 +17,14 @@ test('parses expense without explicit verb', () => {
   assert.equal(result.ok, true);
   assert.equal(result.type, 'expense');
   assert.equal(result.amount, 45);
-  assert.equal(result.category, 'อาหาร');
+  assert.equal(result.category, 'เครื่องดื่ม');
+});
+
+test('classifies drink words before food words', () => {
+  const result = parseTextTransaction('ชานม 55');
+  assert.equal(result.ok, true);
+  assert.equal(result.amount, 55);
+  assert.equal(result.category, 'เครื่องดื่ม');
 });
 
 test('parses explicit category', () => {

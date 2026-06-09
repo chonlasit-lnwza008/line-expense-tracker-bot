@@ -13,6 +13,7 @@
     "simulate": "node --no-warnings src/dev/simulateMessage.js",
     "migrate": "node --no-warnings src/database/migrations.js",
     "richmenu:setup": "node --no-warnings src/scripts/setupRichMenu.js",
+    "reminder:daily": "node --no-warnings src/scripts/sendDailyReminders.js",
     "test": "node --test"
   },
   "dependencies": {

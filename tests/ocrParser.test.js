@@ -180,7 +180,7 @@ test('keeps Tao Bin payment slips as expenses even when OCR contains receive wor
   assert.equal(result.type, 'expense');
   assert.equal(result.title, 'เต่าบิน');
   assert.equal(result.amount, 45);
-  assert.equal(result.category, 'อาหาร');
+  assert.equal(result.category, 'เครื่องดื่ม');
 });
 
 test('parses noisy bill payment merchant and ignores bill customer numbers', () => {

@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const webhookRouter = require('./routes/webhook');
 const db = require('./config/database');
 const dashboardService = require('./services/dashboardService');
@@ -115,6 +116,22 @@ app.post('/api/liff/transactions', express.json({ limit: '32kb' }), async (req, 
   }
 });
 
+app.get('/api/liff/transactions/:id/image', async (req, res, next) => {
+  try {
+    const lineUserId = await resolveLiffLineUserId(req);
+    const imagePath = await liffDashboardService.getTransactionImage(lineUserId, req.params.id);
+    if (!imagePath || !fs.existsSync(imagePath)) {
+      return res.status(404).json({ error: 'Transaction image not found' });
+    }
+    res.sendFile(path.resolve(imagePath));
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+    next(error);
+  }
+});
+
 app.patch('/api/liff/transactions/:id', express.json({ limit: '32kb' }), async (req, res, next) => {
   try {
     const lineUserId = await resolveLiffLineUserId(req);
@@ -171,6 +188,25 @@ app.post('/api/liff/goals', express.json({ limit: '16kb' }), async (req, res, ne
     const lineUserId = await resolveLiffLineUserId(req);
     const goal = await liffDashboardService.createGoalFromDashboard(lineUserId, req.body || {});
     res.status(201).json({ goal });
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        error: error.message,
+        reason: error.reason
+      });
+    }
+    next(error);
+  }
+});
+
+app.post('/api/liff/goals/:id/savings', express.json({ limit: '16kb' }), async (req, res, next) => {
+  try {
+    const lineUserId = await resolveLiffLineUserId(req);
+    const result = await liffDashboardService.addGoalSavingFromDashboard(lineUserId, req.params.id, req.body || {});
+    if (!result) {
+      return res.status(404).json({ error: 'Goal not found' });
+    }
+    res.json(result);
   } catch (error) {
     if (error.statusCode) {
       return res.status(error.statusCode).json({
