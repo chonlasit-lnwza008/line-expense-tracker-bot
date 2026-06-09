@@ -58,3 +58,32 @@ test('new transaction text cancels stale pending duplicate instead of editing it
     { title: 'น้ำ', amount: 15, status: 'confirmed' }
   ]);
 });
+
+test('chat edit flow can update type date and note like dashboard fields', async () => {
+  const user = await createUser('edit-fields');
+
+  await webhook.handleText(user, 'กาแฟ 45');
+  const rows = await transactionService.listRecentTransactions(user.id, 1);
+  const transaction = rows[0];
+
+  const managePrompt = await webhook.handleText(user, 'แก้ไขรายการ');
+  assert.equal(managePrompt.type, 'flex');
+  assert.equal(managePrompt.altText, 'เลือกรายการ 7 วันล่าสุด');
+
+  await transactionService.setPendingEdit(user.id, transaction.id, 'type');
+  const typeReply = await webhook.handleText(user, 'รายรับ');
+  assert.equal(typeReply.altText, 'แก้รายการแล้ว');
+
+  await transactionService.setPendingEdit(user.id, transaction.id, 'date');
+  const dateReply = await webhook.handleText(user, '9/6/2026');
+  assert.equal(dateReply.altText, 'แก้รายการแล้ว');
+
+  await transactionService.setPendingEdit(user.id, transaction.id, 'note');
+  const noteReply = await webhook.handleText(user, 'ซื้อจากร้านหน้าออฟฟิศ');
+  assert.equal(noteReply.altText, 'แก้รายการแล้ว');
+
+  const updated = await transactionService.getUserTransaction(user.id, transaction.id);
+  assert.equal(updated.type, 'income');
+  assert.equal(updated.transactionDate, '2026-06-09');
+  assert.equal(updated.note, 'ซื้อจากร้านหน้าออฟฟิศ');
+});

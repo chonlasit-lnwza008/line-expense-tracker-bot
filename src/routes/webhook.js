@@ -123,7 +123,7 @@ async function handleText(user, text) {
     return buildDeleteConfirmFlex(target);
   }
 
-  if (/^(แก้\/ลบล่าสุด|จัดการล่าสุด|แก้รายการล่าสุด)$/.test(trimmed)) {
+  if (/^(แก้\/ลบล่าสุด|จัดการล่าสุด|แก้รายการล่าสุด|แก้ไขรายการ|แก้รายการ|จัดการรายการ)$/.test(trimmed)) {
     const start = new Date();
     start.setDate(start.getDate() - 6);
     const rows = await transactionService.listTransactionsFromDate(user.id, toDateOnly(start), 50);
@@ -225,7 +225,7 @@ async function handlePostback(user, data = '') {
     if (!target || target.status !== 'confirmed') {
       return buildErrorFlex('แก้รายการนี้ไม่ได้แล้ว', 'รายการอาจถูกลบหรือเปลี่ยนสถานะไปแล้ว ลองกดเมนูแก้/ลบใหม่อีกครั้ง');
     }
-    if (!['amount', 'category', 'title'].includes(field)) {
+    if (!['amount', 'type', 'category', 'title', 'date', 'note'].includes(field)) {
       return buildErrorFlex('เลือกช่องแก้ไขไม่ได้', 'ลองกดปุ่มแก้/ลบใหม่อีกครั้ง');
     }
     await transactionService.setPendingEdit(user.id, target.id, field);
@@ -446,12 +446,23 @@ async function handlePendingEditInput(user, pendingAction, text) {
     const amount = parseAmount(text);
     if (!amount) return buildEditPromptFlex(target, field, 'ยังอ่านยอดใหม่ไม่ได้ ลองพิมพ์เฉพาะตัวเลข เช่น 120');
     patch.amount = amount;
+  } else if (field === 'type') {
+    const type = parseTransactionTypeText(text);
+    if (!type) return buildEditPromptFlex(target, field, 'พิมพ์ประเภทใหม่ เช่น รายจ่าย, รายรับ หรือ โอนเงิน');
+    patch.type = type;
   } else if (field === 'category') {
     if (!text.trim()) return buildEditPromptFlex(target, field, 'พิมพ์ชื่อหมวดใหม่ เช่น อาหาร หรือ เดินทาง');
     patch.category = text.trim().slice(0, 80);
   } else if (field === 'title') {
     if (!text.trim()) return buildEditPromptFlex(target, field, 'พิมพ์ชื่อรายการใหม่ เช่น ข้าวเที่ยง');
     patch.title = text.trim().slice(0, 120);
+  } else if (field === 'date') {
+    const transactionDate = parseChatDate(text);
+    if (!transactionDate) return buildEditPromptFlex(target, field, 'พิมพ์วันที่ใหม่ เช่น 2026-06-09 หรือ 9/6/2026');
+    patch.transactionDate = transactionDate;
+  } else if (field === 'note') {
+    const note = text.trim();
+    patch.note = /^(ลบโน้ต|ไม่มี|none|-)$/.test(note) ? null : note.slice(0, 500);
   } else {
     await transactionService.clearPendingAction(user.id);
     return buildErrorFlex('แก้ช่องนี้ไม่ได้', 'ลองกดเมนูแก้/ลบใหม่อีกครั้ง');
@@ -465,6 +476,57 @@ async function handlePendingEditInput(user, pendingAction, text) {
     ['หมวด', updated.category],
     ['วันที่', formatDisplayDate(updated.transactionDate)]
   ], '#2563eb');
+}
+
+function parseTransactionTypeText(text) {
+  const value = String(text || '').trim().toLowerCase();
+  if (/^(รายรับ|รับ|income|ได้เงิน|เงินเข้า)$/.test(value)) return 'income';
+  if (/^(รายจ่าย|จ่าย|expense|ซื้อ|เงินออก)$/.test(value)) return 'expense';
+  if (/^(โอน|โอนเงิน|transfer)$/.test(value)) return 'transfer';
+  return null;
+}
+
+function parseChatDate(text) {
+  const value = String(text || '').trim();
+  const iso = value.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (iso) {
+    const year = Number(iso[1]);
+    const month = Number(iso[2]);
+    const day = Number(iso[3]);
+    return validDateParts(year, month, day);
+  }
+
+  const slash = value.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (slash) {
+    const day = Number(slash[1]);
+    const month = Number(slash[2]);
+    let year = Number(slash[3]);
+    if (year < 100) year += 2000;
+    if (year > 2400) year -= 543;
+    return validDateParts(year, month, day);
+  }
+
+  if (/^(วันนี้|today)$/i.test(value)) return toDateOnly();
+  if (/^(เมื่อวาน|yesterday)$/i.test(value)) {
+    const date = new Date();
+    date.setDate(date.getDate() - 1);
+    return toDateOnly(date);
+  }
+  return null;
+}
+
+function validDateParts(year, month, day) {
+  if (year < 2000 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+  return toDateOnly(date);
+}
+
+function formatTypeLabel(type) {
+  if (type === 'income') return 'รายรับ';
+  if (type === 'expense') return 'รายจ่าย';
+  if (type === 'transfer') return 'โอนเงิน';
+  return type || '-';
 }
 
 async function handleEdit(user, text, status) {
@@ -904,7 +966,7 @@ function buildManageTransactionFlex(tx) {
   return flexMessage('แก้/ลบรายการ', {
     type: 'bubble',
     size: 'mega',
-    header: flexHeader('แก้/ลบรายการ', 'เลือกปุ่ม แล้วเติมค่าที่ต้องการต่อท้าย', '#111827'),
+    header: flexHeader('แก้/ลบรายการ', 'เลือกช่องที่ต้องการแก้ แล้วพิมพ์ค่าใหม่', '#111827'),
     body: {
       type: 'box',
       layout: 'vertical',
@@ -912,9 +974,11 @@ function buildManageTransactionFlex(tx) {
       contents: [
         flexText(tx.title || 'รายการ', { weight: 'bold', size: 'xl', wrap: true }),
         detailRow('ยอด', `${formatMoney(tx.amount)} บาท`, true),
+        detailRow('ประเภท', formatTypeLabel(tx.type)),
         detailRow('หมวด', tx.category || '-'),
         detailRow('วันที่', formatDisplayDate(tx.transactionDate)),
-        flexText(`ตัวอย่าง: แก้ยอด ${tx.id} 120 หรือ แก้หมวด ${tx.id} อาหาร`, {
+        detailRow('โน้ต', tx.note || '-'),
+        flexText('กดปุ่มด้านล่าง แล้วพิมพ์ค่าใหม่ในแชท ระบบจะบันทึกให้ทันที', {
           size: 'xs',
           color: '#6b7280',
           wrap: true
@@ -934,12 +998,27 @@ function buildManageTransactionFlex(tx) {
         {
           type: 'button',
           style: 'secondary',
+          action: { type: 'postback', label: 'แก้ประเภท', data: `action=start_edit&id=${tx.id}&field=type`, displayText: 'แก้ประเภท' }
+        },
+        {
+          type: 'button',
+          style: 'secondary',
           action: { type: 'postback', label: 'แก้หมวด', data: `action=start_edit&id=${tx.id}&field=category`, displayText: 'แก้หมวด' }
         },
         {
           type: 'button',
           style: 'secondary',
           action: { type: 'postback', label: 'แก้ชื่อ', data: `action=start_edit&id=${tx.id}&field=title`, displayText: 'แก้ชื่อ' }
+        },
+        {
+          type: 'button',
+          style: 'secondary',
+          action: { type: 'postback', label: 'แก้วันที่', data: `action=start_edit&id=${tx.id}&field=date`, displayText: 'แก้วันที่' }
+        },
+        {
+          type: 'button',
+          style: 'secondary',
+          action: { type: 'postback', label: 'แก้โน้ต', data: `action=start_edit&id=${tx.id}&field=note`, displayText: 'แก้โน้ต' }
         },
         {
           type: 'button',
@@ -961,6 +1040,13 @@ function buildEditPromptFlex(tx, field, errorText = null) {
       currentValue: `${formatMoney(tx.amount)} บาท`,
       example: 'ตัวอย่าง: 120'
     },
+    type: {
+      title: 'เลือกประเภทใหม่',
+      subtitle: 'พิมพ์ รายจ่าย, รายรับ หรือ โอนเงิน',
+      currentLabel: 'ประเภทเดิม',
+      currentValue: formatTypeLabel(tx.type),
+      example: 'ตัวอย่าง: รายจ่าย'
+    },
     category: {
       title: 'ใส่หมวดใหม่',
       subtitle: 'พิมพ์ชื่อหมวด เช่น อาหาร',
@@ -974,6 +1060,20 @@ function buildEditPromptFlex(tx, field, errorText = null) {
       currentLabel: 'ชื่อเดิม',
       currentValue: tx.title || '-',
       example: 'ตัวอย่าง: ข้าวเที่ยง'
+    },
+    date: {
+      title: 'ใส่วันที่ใหม่',
+      subtitle: 'พิมพ์วันที่ เช่น 9/6/2026',
+      currentLabel: 'วันที่เดิม',
+      currentValue: formatDisplayDate(tx.transactionDate),
+      example: 'ตัวอย่าง: 2026-06-09 หรือ 9/6/2026'
+    },
+    note: {
+      title: 'ใส่โน้ตใหม่',
+      subtitle: 'พิมพ์ข้อความโน้ต หรือพิมพ์ ลบโน้ต',
+      currentLabel: 'โน้ตเดิม',
+      currentValue: tx.note || '-',
+      example: 'ตัวอย่าง: ซื้อให้แม่ หรือ ลบโน้ต'
     }
   };
   const meta = labels[field] || labels.title;
@@ -1170,8 +1270,20 @@ function buildHelpFlex() {
         flexText('รับ เงินเดือน 18000, ได้เงิน 1000', { size: 'sm', color: '#4b5563', wrap: true }),
         flexText('รูปสลิป', { weight: 'bold', color: '#111827', margin: 'md' }),
         flexText('ส่งรูป แล้วกดปุ่มยืนยันบนการ์ดหลังตรวจสอบ', { size: 'sm', color: '#4b5563', wrap: true }),
+        flexText('แก้ไขรายการ', { weight: 'bold', color: '#111827', margin: 'md' }),
+        flexText('พิมพ์ แก้ไขรายการ แล้วเลือกรายการ 7 วันล่าสุด แก้ได้ทั้งยอด ประเภท หมวด ชื่อ วันที่ และโน้ต', {
+          size: 'sm',
+          color: '#4b5563',
+          wrap: true
+        }),
+        flexText('Dashboard', { weight: 'bold', color: '#111827', margin: 'md' }),
+        flexText('กด Rich Menu ด้านบนเพื่อดูกราฟ กรองรายการ แก้/ลบ ตั้งงบ และจัดการเป้าเก็บเงิน', {
+          size: 'sm',
+          color: '#4b5563',
+          wrap: true
+        }),
         flexText('คำสั่งอื่น', { weight: 'bold', color: '#111827', margin: 'md' }),
-        flexText('สรุป, สรุปเดือนนี้, วิเคราะห์เดือนนี้, รายการล่าสุด, แก้/ลบล่าสุด, ย้อนหลัง 7 วัน, ตั้งงบ 8000, export เดือนนี้', {
+        flexText('สรุป, สรุปเดือนนี้, วิเคราะห์เดือนนี้, รายการล่าสุด, ย้อนหลัง 7 วัน, ตั้งงบ 8000, ตั้งเป้า iPad 18000 ใน 6 เดือน, export เดือนนี้', {
           size: 'sm',
           color: '#4b5563',
           wrap: true
@@ -1239,8 +1351,9 @@ function helpText() {
     '- รายจ่าย: กาแฟ 45, จ่าย ข้าว 60, ซื้อของ 1200 หมวด ของใช้',
     '- รายรับ: รับ เงินเดือน 18000, ได้เงิน 1000',
     '- รูปภาพ: ส่งรูปบิล/สลิป แล้วตอบ ยืนยัน หลังตรวจสอบ',
-    '- แก้ไข: แก้/ลบล่าสุด เพื่อเลือกรายการ 7 วันล่าสุด แล้วกดแก้ยอด/แก้หมวด/แก้ชื่อ',
+    '- แก้ไข: พิมพ์ แก้ไขรายการ เพื่อเลือกรายการ 7 วันล่าสุด แล้วแก้ยอด/ประเภท/หมวด/ชื่อ/วันที่/โน้ต',
     '- ลบ: แก้/ลบล่าสุด แล้วเลือกรายการ 7 วันล่าสุด หรือพิมพ์ ลบล่าสุด',
+    '- Dashboard: กด Rich Menu ด้านบนเพื่อดูกราฟ กรองรายการ แก้/ลบ ตั้งงบ และเป้าเก็บเงิน',
     '- สรุป: สรุปวันนี้, สรุปเดือนนี้',
     '- วิเคราะห์: วิเคราะห์เดือนนี้, AI เดือนนี้',
     '- ดูย้อนหลัง: รายการล่าสุด, ย้อนหลัง 7 วัน',

@@ -1,13 +1,19 @@
 require('dotenv').config();
 
+const fs = require('fs/promises');
+const path = require('path');
 const sharp = require('sharp');
 const { lineClient, blobClient, lineConfig } = require('../config/line');
 
 const WIDTH = 2500;
 const HEIGHT = 1686;
-const ROW_HEIGHT = 843;
-const COLS = [833, 833, 834];
+const DASHBOARD_HEIGHT = 1050;
+const BOTTOM_HEIGHT = HEIGHT - DASHBOARD_HEIGHT;
+const COLS = [833, 834, 833];
 const MENU_NAME = process.env.RICH_MENU_NAME || 'LINE Expense Tracker Menu';
+const RICH_MENU_IMAGE_PATH = process.env.RICH_MENU_IMAGE_PATH
+  ? path.resolve(process.env.RICH_MENU_IMAGE_PATH)
+  : path.resolve(__dirname, '../../public/richmenu/richmenu.png');
 const LIFF_ID = process.env.LIFF_ID || '';
 const APP_URL = resolveAppUrl();
 
@@ -27,12 +33,10 @@ function resolveAppUrl() {
 }
 
 const buttons = [
-  { label: 'วันนี้', hint: 'สรุปยอด', message: 'สรุปวันนี้', color: '#0f766e', icon: 'calendar' },
-  { label: 'หน้าหลัก', hint: 'ดูกราฟ', message: 'dashboard', uri: APP_URL, color: '#2563eb', icon: 'chart' },
-  { label: 'รายการ', hint: 'ล่าสุด', message: 'รายการล่าสุด', color: '#7c3aed', icon: 'list' },
-  { label: 'แก้/ลบ', hint: 'เลือกจากวันนี้', message: 'แก้/ลบล่าสุด', color: '#ea580c', icon: 'edit' },
-  { label: 'AI แนะนำ', hint: 'ใช้เงินยังไง', message: 'วิเคราะห์เดือนนี้', color: '#111827', icon: 'spark' },
-  { label: 'วิธีใช้', hint: 'คำสั่ง', message: 'help', color: '#6b7280', icon: 'help' }
+  { key: 'dashboard', uri: APP_URL, message: 'dashboard' },
+  { key: 'today', message: 'สรุปวันนี้' },
+  { key: 'edit', message: 'แก้ไขรายการ' },
+  { key: 'help', message: 'help' }
 ];
 
 function escapeXml(value) {
@@ -44,21 +48,30 @@ function escapeXml(value) {
 }
 
 function buttonAreas() {
-  const areas = [];
-  for (let row = 0; row < 2; row += 1) {
-    let x = 0;
-    for (let col = 0; col < 3; col += 1) {
-      const index = row * 3 + col;
-      areas.push({
-        bounds: { x, y: row * ROW_HEIGHT, width: COLS[col], height: ROW_HEIGHT },
-        action: buttons[index].uri
-          ? { type: 'uri', uri: buttons[index].uri }
-          : { type: 'message', text: buttons[index].message }
-      });
-      x += COLS[col];
+  return [
+    {
+      bounds: { x: 0, y: 0, width: WIDTH, height: DASHBOARD_HEIGHT },
+      action: actionFor(buttons[0])
+    },
+    {
+      bounds: { x: 0, y: DASHBOARD_HEIGHT, width: COLS[0], height: BOTTOM_HEIGHT },
+      action: actionFor(buttons[1])
+    },
+    {
+      bounds: { x: COLS[0], y: DASHBOARD_HEIGHT, width: COLS[1], height: BOTTOM_HEIGHT },
+      action: actionFor(buttons[2])
+    },
+    {
+      bounds: { x: COLS[0] + COLS[1], y: DASHBOARD_HEIGHT, width: COLS[2], height: BOTTOM_HEIGHT },
+      action: actionFor(buttons[3])
     }
-  }
-  return areas;
+  ];
+}
+
+function actionFor(button) {
+  return button.uri
+    ? { type: 'uri', uri: button.uri }
+    : { type: 'message', text: button.message };
 }
 
 function richMenuBody() {
@@ -160,6 +173,22 @@ function richMenuSvg() {
 }
 
 async function createRichMenuImage() {
+  try {
+    const image = await fs.readFile(RICH_MENU_IMAGE_PATH);
+    const metadata = await sharp(image).metadata();
+    if (metadata.width === WIDTH && metadata.height === HEIGHT) {
+      return image;
+    }
+    return sharp(image)
+      .resize(WIDTH, HEIGHT, { fit: 'fill' })
+      .png({ compressionLevel: 9, palette: true, quality: 82, effort: 10, colors: 128 })
+      .toBuffer();
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      throw error;
+    }
+  }
+
   return sharp(richMenuSvg()).png().toBuffer();
 }
 
