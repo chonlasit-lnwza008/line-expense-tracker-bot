@@ -19,6 +19,10 @@ function resolveAppUrl() {
     return liffLauncherUrl;
   }
 
+  if (configuredUrl && !LIFF_ID && !configuredUrl.includes('liff.line.me') && /\/liff(?:[?#].*)?$/.test(configuredUrl)) {
+    throw new Error('LIFF_URL points to the Render /liff endpoint. Set LIFF_ID or change LIFF_URL to https://liff.line.me/<LIFF_ID> before running richmenu:setup.');
+  }
+
   return configuredUrl || liffLauncherUrl || process.env.DASHBOARD_URL || '';
 }
 
