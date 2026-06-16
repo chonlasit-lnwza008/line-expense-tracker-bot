@@ -7,6 +7,7 @@ const state = {
   modalType: 'expense',
   editingTransaction: null,
   savingGoal: null,
+  payingDebt: null,
   transactionFilter: {
     period: 'month',
     type: 'all',
@@ -28,6 +29,8 @@ const STANDARD_CATEGORIES = [
   'ครอบครัว',
   'บันเทิง',
   'การศึกษา',
+  'ชำระหนี้',
+  'รับคืนหนี้',
   'รายรับ',
   'อื่นๆ'
 ];
@@ -218,6 +221,54 @@ async function addDashboardGoalSaving(id, payload) {
   return data.goal;
 }
 
+async function createDashboardDebt(payload) {
+  const response = await fetch(`/api/liff/debts?${liffQueryParams().toString()}`, {
+    method: 'POST',
+    headers: liffHeaders(true),
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'เพิ่มหนี้ไม่สำเร็จ');
+  }
+  await loadOverview();
+  render();
+  alert(`เพิ่มหนี้แล้ว: ${data.debt.name} ${formatMoney(data.debt.remainingAmount)}`);
+  return data.debt;
+}
+
+async function payDashboardDebt(id, payload) {
+  const response = await fetch(`/api/liff/debts/${encodeURIComponent(id)}/payments?${liffQueryParams().toString()}`, {
+    method: 'POST',
+    headers: liffHeaders(true),
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'จ่ายหนี้ไม่สำเร็จ');
+  }
+  upsertLocalDebt(data.debt);
+  render();
+  refreshOverviewQuietly();
+  alert(data.debt.status === 'paid' ? 'ปิดหนี้ก้อนนี้แล้ว' : `จ่ายแล้ว: ${formatMoney(data.payment.amount)}`);
+  return data;
+}
+
+async function cancelDashboardDebt(id) {
+  const response = await fetch(`/api/liff/debts/${encodeURIComponent(id)}?${liffQueryParams().toString()}`, {
+    method: 'DELETE',
+    headers: liffHeaders()
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'ยกเลิกหนี้ไม่สำเร็จ');
+  }
+  upsertLocalDebt(data.debt);
+  render();
+  refreshOverviewQuietly();
+  return data.debt;
+}
+
 async function downloadDashboardCsv(scope = 'month') {
   const response = await fetch(`/api/liff/export?scope=${encodeURIComponent(scope)}&${liffQueryParams().toString()}`, {
     headers: liffHeaders()
@@ -294,6 +345,7 @@ function render() {
         ${menuCard('edit', 'แก้', 'รายการเดือนนี้', 'กรอง/แก้/ลบ', 'scroll-edit')}
         ${menuCard('budget', 'งบ', 'ตั้งงบ', 'คุมใช้จ่าย', 'open-budget')}
         ${menuCard('goal', 'เป้า', 'ตั้งเป้า', 'เงินเก็บ', 'open-goal')}
+        ${menuCard('debt', 'หนี้', 'หนี้สิน', 'จ่าย/ติดตาม', 'scroll-debts')}
         ${menuCard('export', 'CSV', 'Export', 'เปิด Excel', 'export-month')}
       </section>
 
@@ -329,6 +381,22 @@ function render() {
       </section>
       <section class="panel">
         ${renderGoals(data.goals)}
+      </section>
+
+      <section id="debts" class="section-title">
+        <h2>หนี้สิน</h2>
+        <button class="text-action" type="button" data-open="debt">เพิ่มหนี้</button>
+      </section>
+      <section class="panel">
+        ${renderDebts(data.debts, data.debtSummary)}
+      </section>
+
+      <section id="guide" class="section-title">
+        <h2>คู่มือเร็ว</h2>
+        <small>ตัวอย่างใช้งานจริง</small>
+      </section>
+      <section class="panel">
+        ${renderDashboardGuide()}
       </section>
 
       <section id="chart" class="section-title">
@@ -438,6 +506,46 @@ function render() {
       </form>
     </div>
 
+    <div id="debtModal" class="modal">
+      <form class="sheet" id="debtForm">
+        <h3>เพิ่มหนี้สิน</h3>
+        <p class="sheet-hint">ใช้สำหรับบัตรเครดิต เงินยืม ผ่อนของ หรือเงินที่คนอื่นยืมเรา</p>
+        <label>ชื่อหนี้<input id="debtName" autocomplete="off" placeholder="บัตรเครดิต / ผ่อนมือถือ"></label>
+        <label>ยอดตั้งต้น<input id="debtAmount" type="number" min="1" step="1" placeholder="12000"></label>
+        <label>ประเภท<select id="debtType">
+          <option value="credit_card">บัตรเครดิต</option>
+          <option value="installment">ผ่อนสินค้า</option>
+          <option value="loan">เงินกู้/หนี้ทั่วไป</option>
+          <option value="borrowed">เรายืมคนอื่น</option>
+          <option value="lent">คนอื่นยืมเรา</option>
+        </select></label>
+        <label>ครบกำหนดทุกวันที่<input id="debtDueDay" type="number" min="1" max="31" step="1" placeholder="25"></label>
+        <label>ยอดจ่ายขั้นต่ำ/งวด<input id="debtMinimumPayment" type="number" min="0" step="1" placeholder="1500"></label>
+        <label>โน้ต<input id="debtNote" autocomplete="off" placeholder="เช่น ดอก 0%, จ่ายผ่านแอป"></label>
+        <div class="sheet-actions">
+          <button class="secondary" type="button" id="closeDebtModal">ยกเลิก</button>
+          <button class="primary" type="submit" id="saveDebtBtn">เพิ่มหนี้</button>
+        </div>
+      </form>
+    </div>
+
+    <div id="debtPaymentModal" class="modal">
+      <form class="sheet" id="debtPaymentForm">
+        <h3 id="debtPaymentTitle">จ่ายหนี้</h3>
+        <p class="sheet-hint" id="debtPaymentHint">กรอกยอดที่จ่าย ระบบจะลดยอดคงเหลือให้</p>
+        <label>ยอดที่จ่าย<input id="debtPaymentAmount" type="number" min="1" step="1" placeholder="1000"></label>
+        <label class="check-row">
+          <input id="debtCreateTransaction" type="checkbox" checked>
+          <span>ลงเป็นรายการรายรับ/รายจ่ายในบัญชีด้วย</span>
+        </label>
+        <label>โน้ต<input id="debtPaymentNote" autocomplete="off" placeholder="เช่น งวดเดือนนี้"></label>
+        <div class="sheet-actions">
+          <button class="secondary" type="button" id="closeDebtPaymentModal">ยกเลิก</button>
+          <button class="primary" type="submit" id="saveDebtPaymentBtn">บันทึกการจ่าย</button>
+        </div>
+      </form>
+    </div>
+
     <div id="imageModal" class="modal">
       <div class="sheet image-sheet">
         <h3>รูปแนบรายการ</h3>
@@ -531,6 +639,17 @@ function iconGraphic(name, fallback = '') {
         <circle cx="24" cy="24" r="3"/>
         <path d="m30 18 10-10"/>
         <path d="M36 8h4v4"/>
+      </svg>`,
+    debt: `
+      <svg viewBox="0 0 48 48" role="img" aria-label="หนี้สิน">
+        <path d="M12 7h21l6 6v28H12z"/>
+        <path d="M33 7v8h6"/>
+        <path d="M18 20h13"/>
+        <path d="M18 28h10"/>
+        <path d="M18 36h6"/>
+        <circle cx="34" cy="34" r="7"/>
+        <path d="M34 30v8"/>
+        <path d="M30 34h8"/>
       </svg>`,
     export: `
       <svg viewBox="0 0 48 48" role="img" aria-label="Export CSV">
@@ -773,6 +892,88 @@ function renderGoals(goals) {
   `;
 }
 
+function renderDebts(debts = [], summary = {}) {
+  const activeDebts = debts.filter((debt) => debt.status === 'active');
+  const paidDebts = debts.filter((debt) => debt.status === 'paid').slice(0, 3);
+  const payableTotal = Number(summary.payableTotal || 0);
+  const receivableTotal = Number(summary.receivableTotal || 0);
+
+  return `
+    <div class="debt-summary-grid">
+      <div><span>ต้องจ่ายคืน</span><strong class="expense-text">${formatMoney(payableTotal)}</strong></div>
+      <div><span>รอรับคืน</span><strong class="income-text">${formatMoney(receivableTotal)}</strong></div>
+      <div><span>ใกล้ครบกำหนด</span><strong>${money.format(Number(summary.dueSoonCount || 0) + Number(summary.overdueCount || 0))}</strong></div>
+    </div>
+    ${activeDebts.length ? `
+      <div class="debt-list">
+        ${activeDebts.map((debt) => {
+          const percent = Math.min(Math.max(Number(debt.percent || 0), 0), 100);
+          const isReceivable = debt.type === 'lent';
+          const statusClass = debt.computedStatus === 'overdue' ? 'overdue' : debt.computedStatus === 'due_soon' ? 'due-soon' : '';
+          const statusText = debt.computedStatus === 'overdue' ? 'เลยกำหนด' : debt.computedStatus === 'due_soon' ? 'ใกล้ครบกำหนด' : 'ปกติ';
+          return `
+            <article class="debt-card ${statusClass}">
+              <div class="debt-top">
+                <div class="debt-title">
+                  <span class="debt-badge ${isReceivable ? 'receivable' : 'payable'}">${isReceivable ? 'รอรับ' : 'ต้องจ่าย'}</span>
+                  <strong>${escapeHtml(debt.name)}</strong>
+                </div>
+                <span class="debt-status">${statusText}</span>
+              </div>
+              <div class="debt-amount">${formatMoney(debt.remainingAmount)} <small>เหลือจาก ${formatMoney(debt.principalAmount)}</small></div>
+              <div class="goal-progress" aria-label="จ่ายแล้ว ${percent}%">
+                <div class="goal-progress-fill debt-progress" style="width:${percent}%"></div>
+              </div>
+              <div class="debt-meta">
+                <span>${escapeHtml(debt.typeLabel)}</span>
+                <span>${escapeHtml(debt.displayDue || 'ไม่ตั้งวันครบกำหนด')}</span>
+              </div>
+              ${debt.minimumPayment ? `<div class="debt-meta"><span>งวดขั้นต่ำ ${formatMoney(debt.minimumPayment)}</span></div>` : ''}
+              <div class="debt-actions">
+                <button class="mini-action" type="button" data-debt-pay-id="${escapeHtml(debt.id)}">${isReceivable ? 'รับคืน' : 'จ่ายงวด'}</button>
+                <button class="mini-action ghost" type="button" data-debt-cancel-id="${escapeHtml(debt.id)}">ปิด/ยกเลิก</button>
+              </div>
+            </article>
+          `;
+        }).join('')}
+      </div>
+    ` : '<div class="empty">ยังไม่มีหนี้สิน กดเพิ่มหนี้เพื่อเริ่มติดตามยอดคงเหลือและวันครบกำหนด</div>'}
+    ${paidDebts.length ? `
+      <div class="paid-debts">
+        <strong>ปิดแล้วล่าสุด</strong>
+        ${paidDebts.map((debt) => `<span>${escapeHtml(debt.name)} · ${formatMoney(debt.principalAmount)}</span>`).join('')}
+      </div>
+    ` : ''}
+  `;
+}
+
+function renderDashboardGuide() {
+  return `
+    <div class="guide-grid">
+      <div class="guide-card">
+        <strong>บันทึกเร็ว</strong>
+        <span>กาแฟ 45</span>
+        <span>รับ เงินเดือน 18000</span>
+      </div>
+      <div class="guide-card">
+        <strong>หนี้สิน</strong>
+        <span>เพิ่มหนี้ บัตรเครดิต 12000 ครบกำหนด 25</span>
+        <span>จ่ายหนี้ บัตรเครดิต 3000</span>
+      </div>
+      <div class="guide-card">
+        <strong>ดูภาพรวม</strong>
+        <span>สรุปวันนี้</span>
+        <span>วิเคราะห์เดือนนี้</span>
+      </div>
+      <div class="guide-card">
+        <strong>จัดการ</strong>
+        <span>แก้ไขรายการ</span>
+        <span>export เดือนนี้</span>
+      </div>
+    </div>
+  `;
+}
+
 function renderCategoryBars(categories) {
   if (!categories.length) return '<div class="empty">ยังไม่มีรายจ่ายเดือนนี้</div>';
   const max = Math.max(...categories.map((item) => Number(item.amount)), 1);
@@ -934,6 +1135,12 @@ function bindEvents() {
   document.querySelectorAll('[data-goal-save-id]').forEach((button) => {
     button.addEventListener('click', () => openGoalSavingModal(button.dataset.goalSaveId));
   });
+  document.querySelectorAll('[data-debt-pay-id]').forEach((button) => {
+    button.addEventListener('click', () => openDebtPaymentModal(button.dataset.debtPayId));
+  });
+  document.querySelectorAll('[data-debt-cancel-id]').forEach((button) => {
+    button.addEventListener('click', () => handleCancelDebt(button.dataset.debtCancelId));
+  });
   document.querySelectorAll('[data-filter-kind]').forEach((button) => {
     button.addEventListener('click', () => {
       state.transactionFilter[button.dataset.filterKind] = button.dataset.filterValue;
@@ -983,6 +1190,16 @@ function bindEvents() {
     if (event.target.id === 'goalSavingModal') closeGoalSavingModal();
   });
   document.getElementById('goalSavingForm').addEventListener('submit', handleSubmitGoalSaving);
+  document.getElementById('closeDebtModal').addEventListener('click', closeDebtModal);
+  document.getElementById('debtModal').addEventListener('click', (event) => {
+    if (event.target.id === 'debtModal') closeDebtModal();
+  });
+  document.getElementById('debtForm').addEventListener('submit', handleSubmitDebt);
+  document.getElementById('closeDebtPaymentModal').addEventListener('click', closeDebtPaymentModal);
+  document.getElementById('debtPaymentModal').addEventListener('click', (event) => {
+    if (event.target.id === 'debtPaymentModal') closeDebtPaymentModal();
+  });
+  document.getElementById('debtPaymentForm').addEventListener('submit', handleSubmitDebtPayment);
   document.getElementById('closeImageModal').addEventListener('click', closeImageModal);
   document.getElementById('imageModal').addEventListener('click', (event) => {
     if (event.target.id === 'imageModal') closeImageModal();
@@ -1023,6 +1240,10 @@ function openQuickModal(type) {
   }
   if (type === 'goal') {
     openGoalModal();
+    return;
+  }
+  if (type === 'debt') {
+    openDebtModal();
     return;
   }
   state.modalType = type;
@@ -1086,9 +1307,47 @@ function closeGoalSavingModal() {
   state.savingGoal = null;
 }
 
+function openDebtModal() {
+  document.getElementById('debtName').value = '';
+  document.getElementById('debtAmount').value = '';
+  document.getElementById('debtType').value = 'credit_card';
+  document.getElementById('debtDueDay').value = '';
+  document.getElementById('debtMinimumPayment').value = '';
+  document.getElementById('debtNote').value = '';
+  document.getElementById('debtModal').classList.add('open');
+  setTimeout(() => document.getElementById('debtName').focus(), 50);
+}
+
+function closeDebtModal() {
+  document.getElementById('debtModal').classList.remove('open');
+}
+
+function openDebtPaymentModal(id) {
+  const debt = findDebt(id);
+  if (!debt) return;
+  state.payingDebt = debt;
+  document.getElementById('debtPaymentTitle').textContent = `${debt.type === 'lent' ? 'รับคืน' : 'จ่ายหนี้'}: ${debt.name}`;
+  document.getElementById('debtPaymentHint').textContent = `ยอดคงเหลือ ${formatMoney(debt.remainingAmount)}${debt.minimumPayment ? ` · งวดขั้นต่ำ ${formatMoney(debt.minimumPayment)}` : ''}`;
+  document.getElementById('debtPaymentAmount').value = debt.minimumPayment ? Math.min(Number(debt.minimumPayment), Number(debt.remainingAmount)) : '';
+  document.getElementById('debtCreateTransaction').checked = true;
+  document.getElementById('debtPaymentNote').value = '';
+  document.getElementById('debtPaymentModal').classList.add('open');
+  setTimeout(() => document.getElementById('debtPaymentAmount').focus(), 50);
+}
+
+function closeDebtPaymentModal() {
+  document.getElementById('debtPaymentModal').classList.remove('open');
+  state.payingDebt = null;
+}
+
 function findGoal(id) {
   const goals = (state.data && state.data.goals) || [];
   return goals.find((goal) => String(goal.id) === String(id));
+}
+
+function findDebt(id) {
+  const debts = (state.data && state.data.debts) || [];
+  return debts.find((debt) => String(debt.id) === String(id));
 }
 
 function upsertLocalGoal(goal) {
@@ -1102,6 +1361,20 @@ function upsertLocalGoal(goal) {
     state.data.goals[index] = { ...state.data.goals[index], ...goal };
   } else {
     state.data.goals.push(goal);
+  }
+}
+
+function upsertLocalDebt(debt) {
+  if (!state.data || !debt) return;
+  if (!Array.isArray(state.data.debts)) {
+    state.data.debts = [debt];
+    return;
+  }
+  const index = state.data.debts.findIndex((item) => String(item.id) === String(debt.id));
+  if (index >= 0) {
+    state.data.debts[index] = { ...state.data.debts[index], ...debt };
+  } else {
+    state.data.debts.push(debt);
   }
 }
 
@@ -1301,6 +1574,61 @@ async function handleSubmitGoalSaving(event) {
     if (document.getElementById('saveGoalSavingBtn')) {
       document.getElementById('saveGoalSavingBtn').disabled = false;
     }
+  }
+}
+
+async function handleSubmitDebt(event) {
+  event.preventDefault();
+  const saveBtn = document.getElementById('saveDebtBtn');
+  saveBtn.disabled = true;
+  try {
+    await createDashboardDebt({
+      name: document.getElementById('debtName').value,
+      type: document.getElementById('debtType').value,
+      principalAmount: document.getElementById('debtAmount').value,
+      dueDay: document.getElementById('debtDueDay').value,
+      minimumPayment: document.getElementById('debtMinimumPayment').value,
+      note: document.getElementById('debtNote').value
+    });
+    closeDebtModal();
+  } catch (error) {
+    alert(error.message);
+  } finally {
+    if (document.getElementById('saveDebtBtn')) {
+      document.getElementById('saveDebtBtn').disabled = false;
+    }
+  }
+}
+
+async function handleSubmitDebtPayment(event) {
+  event.preventDefault();
+  if (!state.payingDebt) return;
+  const saveBtn = document.getElementById('saveDebtPaymentBtn');
+  saveBtn.disabled = true;
+  try {
+    await payDashboardDebt(state.payingDebt.id, {
+      amount: document.getElementById('debtPaymentAmount').value,
+      note: document.getElementById('debtPaymentNote').value,
+      createTransaction: document.getElementById('debtCreateTransaction').checked
+    });
+    closeDebtPaymentModal();
+  } catch (error) {
+    alert(error.message);
+  } finally {
+    if (document.getElementById('saveDebtPaymentBtn')) {
+      document.getElementById('saveDebtPaymentBtn').disabled = false;
+    }
+  }
+}
+
+async function handleCancelDebt(id) {
+  const debt = findDebt(id);
+  if (!debt) return;
+  if (!confirm(`ปิด/ยกเลิก "${debt.name}" ใช่ไหม?`)) return;
+  try {
+    await cancelDashboardDebt(id);
+  } catch (error) {
+    alert(error.message);
   }
 }
 

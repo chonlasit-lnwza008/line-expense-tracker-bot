@@ -58,3 +58,39 @@ CREATE TABLE IF NOT EXISTS goals (
   createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (userId) REFERENCES users(id)
 );
+
+CREATE TABLE IF NOT EXISTS debts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  userId INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('borrowed', 'lent', 'installment', 'credit_card', 'loan')),
+  principalAmount REAL NOT NULL,
+  remainingAmount REAL NOT NULL,
+  interestRate REAL NOT NULL DEFAULT 0,
+  minimumPayment REAL,
+  dueDay INTEGER,
+  dueDate TEXT,
+  status TEXT NOT NULL CHECK (status IN ('active', 'paid', 'cancelled')) DEFAULT 'active',
+  note TEXT,
+  createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (userId) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_debts_user_status ON debts(userId, status);
+
+CREATE TABLE IF NOT EXISTS debt_payments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  debtId INTEGER NOT NULL,
+  userId INTEGER NOT NULL,
+  amount REAL NOT NULL,
+  paymentDate TEXT NOT NULL,
+  note TEXT,
+  transactionId INTEGER,
+  createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (debtId) REFERENCES debts(id),
+  FOREIGN KEY (userId) REFERENCES users(id),
+  FOREIGN KEY (transactionId) REFERENCES transactions(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_debt_payments_user_date ON debt_payments(userId, paymentDate);

@@ -9,6 +9,7 @@ const transactionService = require('../services/transactionService');
 const summaryService = require('../services/summaryService');
 const analysisService = require('../services/analysisService');
 const budgetService = require('../services/budgetService');
+const debtService = require('../services/debtService');
 const exportService = require('../services/exportService');
 const { parseTextTransaction } = require('../parser/textParser');
 const { parseOcrText } = require('../parser/ocrParser');
@@ -169,6 +170,9 @@ async function handleText(user, text) {
 
   const goalReply = await handleGoal(user, trimmed);
   if (goalReply) return goalReply;
+
+  const debtReply = await handleDebt(user, trimmed);
+  if (debtReply) return debtReply;
 
   if (pending && isPlainAmount) {
     const updated = await transactionService.updateLatest(user.id, { amount: parseAmount(trimmed) }, 'pending');
@@ -628,6 +632,61 @@ async function handleGoal(user, text) {
   ], '#7c3aed');
 }
 
+async function handleDebt(user, text) {
+  if (/^(หนี้|หนี้สิน|หนี้ทั้งหมด|ดูหนี้)$/.test(text)) {
+    const debts = await debtService.listDebts(user.id, 'all');
+    return buildDebtsFlex(debts);
+  }
+
+  const createMatch = text.match(/^เพิ่มหนี้\s+(.+?)\s+(\d[\d,]*(?:\.\d{1,2})?)(.*)$/);
+  if (createMatch) {
+    const debt = await debtService.createDebt(user.id, parseDebtInput(createMatch[1], createMatch[2], createMatch[3]));
+    return buildDebtSavedFlex(debt, 'เพิ่มหนี้แล้ว');
+  }
+
+  const payMatch = text.match(/^จ่ายหนี้\s+(.+?)\s+(\d[\d,]*(?:\.\d{1,2})?)(.*)$/);
+  if (payMatch) {
+    const debt = await debtService.findDebtByName(user.id, payMatch[1].trim());
+    if (!debt) return buildErrorFlex('ไม่พบหนี้ก้อนนี้', 'ลองพิมพ์ "หนี้สิน" เพื่อดูชื่อหนี้ทั้งหมด หรือเพิ่มหนี้ก่อน');
+    const noTransaction = /ไม่ลงบัญชี|ไม่บันทึกรายจ่าย|ไม่บันทึกรายรับ|เฉพาะหนี้/.test(payMatch[3] || '');
+    const result = await debtService.recordPayment(user.id, debt.id, {
+      amount: parseAmount(payMatch[2]),
+      note: (payMatch[3] || '').replace(/ไม่ลงบัญชี|ไม่บันทึกรายจ่าย|ไม่บันทึกรายรับ|เฉพาะหนี้/g, '').trim(),
+      createTransaction: !noTransaction
+    });
+    if (!result) return buildErrorFlex('จ่ายหนี้ไม่สำเร็จ', 'หนี้ก้อนนี้อาจถูกปิดไปแล้ว');
+    return buildDebtPaymentFlex(result);
+  }
+
+  return null;
+}
+
+function parseDebtInput(name, amountText, extraText = '') {
+  const extra = String(extraText || '');
+  const dueDayMatch = extra.match(/(?:ครบกำหนด|กำหนด|ทุกวันที่|วันที่)\s*(\d{1,2})/);
+  const minimumMatch = extra.match(/(?:จ่ายเดือนละ|งวดละ|ขั้นต่ำ)\s*(\d[\d,]*(?:\.\d{1,2})?)/);
+  const type = detectDebtType(`${name} ${extra}`);
+  return {
+    name: name.trim(),
+    type,
+    principalAmount: parseAmount(amountText),
+    dueDay: dueDayMatch ? Number(dueDayMatch[1]) : null,
+    minimumPayment: minimumMatch ? parseAmount(minimumMatch[1]) : null,
+    note: extra.replace(/(?:ครบกำหนด|กำหนด|ทุกวันที่|วันที่)\s*\d{1,2}/g, '')
+      .replace(/(?:จ่ายเดือนละ|งวดละ|ขั้นต่ำ)\s*\d[\d,]*(?:\.\d{1,2})?/g, '')
+      .trim()
+  };
+}
+
+function detectDebtType(text) {
+  const value = String(text || '').toLowerCase();
+  if (/คนอื่นยืม|ให้ยืม|ลูกหนี้|รอรับ/.test(value)) return 'lent';
+  if (/บัตร|เครดิต|credit/.test(value)) return 'credit_card';
+  if (/ผ่อน|install/.test(value)) return 'installment';
+  if (/กู้|loan/.test(value)) return 'loan';
+  return 'borrowed';
+}
+
 function flexMessage(altText, contents) {
   return { type: 'flex', altText, contents };
 }
@@ -738,6 +797,112 @@ function buildResultFlex(title, rows, color = '#16a34a') {
       layout: 'vertical',
       spacing: 'md',
       contents: rows.map(([label, value]) => detailRow(label, value, label === 'ยอด'))
+    }
+  });
+}
+
+function buildDebtSavedFlex(debt, title = 'บันทึกหนี้แล้ว') {
+  return flexMessage(title, {
+    type: 'bubble',
+    size: 'mega',
+    header: flexHeader(title, 'ติดตามยอดคงเหลือและวันครบกำหนด', '#0f766e'),
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'md',
+      contents: [
+        flexText(debt.name, { weight: 'bold', size: 'xl', wrap: true }),
+        detailRow('ยอดตั้งต้น', `${formatMoney(debt.principalAmount)} บาท`, true),
+        detailRow('ยอดคงเหลือ', `${formatMoney(debt.remainingAmount)} บาท`, true),
+        detailRow('ประเภท', debt.typeLabel),
+        detailRow('กำหนด', debt.displayDue || '-'),
+        detailRow('งวดขั้นต่ำ', debt.minimumPayment ? `${formatMoney(debt.minimumPayment)} บาท` : '-'),
+        flexText('ตัวอย่างจ่าย: จ่ายหนี้ ' + debt.name + ' 1000', { size: 'xs', color: '#0f766e', wrap: true })
+      ]
+    }
+  });
+}
+
+function buildDebtPaymentFlex(result) {
+  const debt = result.debt;
+  return flexMessage('บันทึกการจ่ายหนี้แล้ว', {
+    type: 'bubble',
+    size: 'mega',
+    header: flexHeader(debt.status === 'paid' ? 'ปิดหนี้แล้ว' : 'บันทึกการจ่ายหนี้แล้ว', 'อัปเดตยอดคงเหลือเรียบร้อย', '#16a34a'),
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'md',
+      contents: [
+        flexText(debt.name, { weight: 'bold', size: 'xl', wrap: true }),
+        detailRow('จ่ายครั้งนี้', `${formatMoney(result.payment.amount)} บาท`, true),
+        detailRow('ยอดคงเหลือ', `${formatMoney(debt.remainingAmount)} บาท`, true),
+        detailRow('สถานะ', debt.status === 'paid' ? 'ปิดแล้ว' : 'ยังต้องติดตามต่อ'),
+        detailRow('ลงบัญชี', result.transactionId ? 'ลงรายรับ/รายจ่ายให้แล้ว' : 'ไม่ได้ลงบัญชี')
+      ]
+    }
+  });
+}
+
+function buildDebtsFlex(debts = []) {
+  const summary = debtService.summarizeDebts(debts);
+  const active = debts.filter((debt) => debt.status === 'active').slice(0, 8);
+  const rows = [
+    detailRow('ต้องจ่ายคืน', `${formatMoney(summary.payableTotal)} บาท`, true),
+    detailRow('รอรับคืน', `${formatMoney(summary.receivableTotal)} บาท`, true),
+    detailRow('ใกล้ครบกำหนด', `${summary.dueSoonCount + summary.overdueCount} รายการ`)
+  ];
+
+  return flexMessage('หนี้สินทั้งหมด', {
+    type: 'bubble',
+    size: 'mega',
+    header: flexHeader('หนี้สิน', 'ยอดคงเหลือและรายการที่ต้องติดตาม', '#111827'),
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'md',
+      contents: [
+        ...rows,
+        ...(active.length ? [{
+          type: 'separator',
+          margin: 'md'
+        }] : []),
+        ...(active.length ? active.map((debt) => ({
+          type: 'box',
+          layout: 'vertical',
+          spacing: 'xs',
+          margin: 'md',
+          contents: [
+            flexText(debt.name, { weight: 'bold', color: '#111827', wrap: true }),
+            flexText(`${debt.typeLabel} · เหลือ ${formatMoney(debt.remainingAmount)} บาท · ${debt.displayDue || 'ไม่ตั้งกำหนด'}`, {
+              size: 'sm',
+              color: '#4b5563',
+              wrap: true
+            })
+          ]
+        })) : [flexText('ยังไม่มีหนี้สิน ลองพิมพ์: เพิ่มหนี้ บัตรเครดิต 12000 ครบกำหนด 25', {
+          size: 'sm',
+          color: '#4b5563',
+          wrap: true
+        })])
+      ]
+    },
+    footer: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'sm',
+      contents: [
+        {
+          type: 'button',
+          style: 'primary',
+          color: '#0f766e',
+          action: {
+            type: 'message',
+            label: 'เปิด Dashboard',
+            text: 'dashboard'
+          }
+        }
+      ]
     }
   });
 }
@@ -1272,6 +1437,12 @@ function buildHelpFlex() {
         flexText('ส่งรูป แล้วกดปุ่มยืนยันบนการ์ดหลังตรวจสอบ', { size: 'sm', color: '#4b5563', wrap: true }),
         flexText('แก้ไขรายการ', { weight: 'bold', color: '#111827', margin: 'md' }),
         flexText('พิมพ์ แก้ไขรายการ แล้วเลือกรายการ 7 วันล่าสุด แก้ได้ทั้งยอด ประเภท หมวด ชื่อ วันที่ และโน้ต', {
+          size: 'sm',
+          color: '#4b5563',
+          wrap: true
+        }),
+        flexText('หนี้สิน', { weight: 'bold', color: '#111827', margin: 'md' }),
+        flexText('เพิ่มหนี้ บัตรเครดิต 12000 ครบกำหนด 25, เพิ่มหนี้ ผ่อนมือถือ 15900 จ่ายเดือนละ 1200, จ่ายหนี้ บัตรเครดิต 3000, หนี้สิน', {
           size: 'sm',
           color: '#4b5563',
           wrap: true

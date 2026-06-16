@@ -54,7 +54,15 @@ function createPostgresClient() {
     imagepath: 'imagePath',
     ocrtext: 'ocrText',
     targetamount: 'targetAmount',
-    currentamount: 'currentAmount'
+    currentamount: 'currentAmount',
+    principalamount: 'principalAmount',
+    remainingamount: 'remainingAmount',
+    interestrate: 'interestRate',
+    minimumpayment: 'minimumPayment',
+    dueday: 'dueDay',
+    duedate: 'dueDate',
+    debtid: 'debtId',
+    paymentdate: 'paymentDate'
   };
 
   function normalizeRow(row) {

@@ -22,7 +22,7 @@ app.get('/', (req, res) => {
 
 app.get('/health/db', async (req, res, next) => {
   try {
-    const expectedTables = ['users', 'transactions', 'budgets', 'goals'];
+    const expectedTables = ['users', 'transactions', 'budgets', 'goals', 'debts', 'debt_payments'];
     const tables = db.client === 'postgres'
       ? await db.all(
         `SELECT table_name AS name
@@ -36,7 +36,7 @@ app.get('/health/db', async (req, res, next) => {
         `SELECT name
          FROM sqlite_master
          WHERE type = 'table'
-           AND name IN ('users', 'transactions', 'budgets', 'goals')
+           AND name IN ('users', 'transactions', 'budgets', 'goals', 'debts', 'debt_payments')
          ORDER BY name`
       );
 
@@ -213,6 +213,76 @@ app.post('/api/liff/goals/:id/savings', express.json({ limit: '16kb' }), async (
         error: error.message,
         reason: error.reason
       });
+    }
+    next(error);
+  }
+});
+
+app.post('/api/liff/debts', express.json({ limit: '24kb' }), async (req, res, next) => {
+  try {
+    const lineUserId = await resolveLiffLineUserId(req);
+    const debt = await liffDashboardService.createDebtFromDashboard(lineUserId, req.body || {});
+    res.status(201).json({ debt });
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        error: error.message,
+        reason: error.reason
+      });
+    }
+    next(error);
+  }
+});
+
+app.patch('/api/liff/debts/:id', express.json({ limit: '24kb' }), async (req, res, next) => {
+  try {
+    const lineUserId = await resolveLiffLineUserId(req);
+    const debt = await liffDashboardService.updateDebtFromDashboard(lineUserId, req.params.id, req.body || {});
+    if (!debt) {
+      return res.status(404).json({ error: 'Debt not found' });
+    }
+    res.json({ debt });
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        error: error.message,
+        reason: error.reason
+      });
+    }
+    next(error);
+  }
+});
+
+app.post('/api/liff/debts/:id/payments', express.json({ limit: '16kb' }), async (req, res, next) => {
+  try {
+    const lineUserId = await resolveLiffLineUserId(req);
+    const result = await liffDashboardService.payDebtFromDashboard(lineUserId, req.params.id, req.body || {});
+    if (!result) {
+      return res.status(404).json({ error: 'Debt not found' });
+    }
+    res.json(result);
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        error: error.message,
+        reason: error.reason
+      });
+    }
+    next(error);
+  }
+});
+
+app.delete('/api/liff/debts/:id', async (req, res, next) => {
+  try {
+    const lineUserId = await resolveLiffLineUserId(req);
+    const debt = await liffDashboardService.cancelDebtFromDashboard(lineUserId, req.params.id);
+    if (!debt) {
+      return res.status(404).json({ error: 'Debt not found' });
+    }
+    res.json({ debt });
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message });
     }
     next(error);
   }

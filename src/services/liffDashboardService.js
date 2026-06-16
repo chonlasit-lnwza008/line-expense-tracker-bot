@@ -1,6 +1,7 @@
 const db = require('../config/database');
 const transactionService = require('./transactionService');
 const exportService = require('./exportService');
+const debtService = require('./debtService');
 const { parseTextTransaction } = require('../parser/textParser');
 const { currentMonth, monthRange, toDateOnly, formatDisplayDate } = require('../utils/dateUtils');
 const { normalizeTransaction } = require('./summaryService');
@@ -221,6 +222,7 @@ async function getOverview(lineUserId, month = currentMonth()) {
   const todayRows = monthlyRows.filter((row) => row.transactionDate === today);
   const categories = groupExpensesByCategory(monthlyRows).slice(0, 8);
   const budgets = await getBudgetProgress(user.id, month || currentMonth());
+  const debts = await debtService.listDebts(user.id, 'all');
   const smartInsights = buildSmartInsights(monthlyRows, categories, totals, summarize(todayRows));
   const spendingPlan = buildSpendingPlan(totals, budgets, month || currentMonth());
 
@@ -240,6 +242,8 @@ async function getOverview(lineUserId, month = currentMonth()) {
     monthlyReport: buildMonthlyReport(monthlyRows, categories, totals, smartInsights, spendingPlan),
     budgets,
     goals: await getGoals(user.id),
+    debts,
+    debtSummary: debtService.summarizeDebts(debts),
     categories,
     daily: groupByDate(monthlyRows),
     transactions: monthlyRows.map(mapTransaction),
@@ -536,6 +540,26 @@ async function addGoalSavingFromDashboard(lineUserId, id, input = {}) {
   };
 }
 
+async function createDebtFromDashboard(lineUserId, input = {}) {
+  const user = await transactionService.findOrCreateUser(lineUserId);
+  return debtService.createDebt(user.id, input);
+}
+
+async function updateDebtFromDashboard(lineUserId, id, input = {}) {
+  const user = await transactionService.findOrCreateUser(lineUserId);
+  return debtService.updateDebt(user.id, Number(id), input);
+}
+
+async function payDebtFromDashboard(lineUserId, id, input = {}) {
+  const user = await transactionService.findOrCreateUser(lineUserId);
+  return debtService.recordPayment(user.id, Number(id), input);
+}
+
+async function cancelDebtFromDashboard(lineUserId, id) {
+  const user = await transactionService.findOrCreateUser(lineUserId);
+  return debtService.cancelDebt(user.id, Number(id));
+}
+
 async function exportCsv(lineUserId, scope = 'month') {
   const user = await transactionService.findOrCreateUser(lineUserId);
   return exportService.exportTransactions(user.id, scope === 'all' ? 'all' : 'month');
@@ -550,5 +574,9 @@ module.exports = {
   setBudgetFromDashboard,
   createGoalFromDashboard,
   addGoalSavingFromDashboard,
+  createDebtFromDashboard,
+  updateDebtFromDashboard,
+  payDebtFromDashboard,
+  cancelDebtFromDashboard,
   exportCsv
 };

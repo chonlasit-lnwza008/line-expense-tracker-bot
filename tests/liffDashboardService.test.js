@@ -174,6 +174,65 @@ test('LIFF dashboard can create goal and export CSV', async () => {
   assert.match(csv, /กาแฟ/);
 });
 
+test('LIFF dashboard can manage debts and record debt payments', async () => {
+  await ensureDatabase();
+  const lineUserId = uniqueLineUserId('debt');
+
+  const debt = await liffDashboardService.createDebtFromDashboard(lineUserId, {
+    name: 'บัตรเครดิต',
+    type: 'credit_card',
+    principalAmount: 12000,
+    dueDay: 25,
+    minimumPayment: 1500,
+    note: 'ทดสอบหนี้'
+  });
+
+  assert.equal(debt.name, 'บัตรเครดิต');
+  assert.equal(debt.remainingAmount, 12000);
+  assert.equal(debt.minimumPayment, 1500);
+  assert.equal(debt.status, 'active');
+
+  let overview = await liffDashboardService.getOverview(lineUserId);
+  assert.equal(overview.debts.length, 1);
+  assert.equal(overview.debtSummary.payableTotal, 12000);
+
+  const payment = await liffDashboardService.payDebtFromDashboard(lineUserId, debt.id, {
+    amount: 3000,
+    note: 'จ่ายงวดแรก',
+    createTransaction: true
+  });
+
+  assert.equal(payment.payment.amount, 3000);
+  assert.equal(payment.debt.remainingAmount, 9000);
+  assert.ok(payment.transactionId);
+
+  overview = await liffDashboardService.getOverview(lineUserId);
+  assert.equal(overview.debtSummary.payableTotal, 9000);
+  assert.ok(overview.transactions.some((row) => row.title === 'จ่ายหนี้ บัตรเครดิต' && row.amount === 3000));
+});
+
+test('LIFF dashboard can track receivable debt without creating a transaction', async () => {
+  await ensureDatabase();
+  const lineUserId = uniqueLineUserId('receivable-debt');
+
+  const debt = await liffDashboardService.createDebtFromDashboard(lineUserId, {
+    name: 'เพื่อนยืม',
+    type: 'lent',
+    principalAmount: 5000
+  });
+  const payment = await liffDashboardService.payDebtFromDashboard(lineUserId, debt.id, {
+    amount: 1000,
+    createTransaction: false
+  });
+
+  assert.equal(payment.debt.remainingAmount, 4000);
+  assert.equal(payment.transactionId, null);
+
+  const overview = await liffDashboardService.getOverview(lineUserId);
+  assert.equal(overview.debtSummary.receivableTotal, 4000);
+  assert.equal(overview.transactionCount, 0);
+});
+
 test('LIFF dashboard returns monthly transactions, report, spending plan, and image metadata', async () => {
   await ensureDatabase();
   const lineUserId = uniqueLineUserId('monthly-tools');
