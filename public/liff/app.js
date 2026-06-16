@@ -288,7 +288,7 @@ async function downloadDashboardCsv(scope = 'month') {
   URL.revokeObjectURL(url);
 }
 
-async function downloadDashboardPdf(options = {}) {
+async function downloadDashboardPdfBlobFallback(options = {}) {
   const scope = options.scope || 'month';
   const params = liffQueryParams();
   params.set('scope', scope);
@@ -310,6 +310,35 @@ async function downloadDashboardPdf(options = {}) {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+async function downloadDashboardPdf(options = {}) {
+  const response = await fetch(`/api/liff/export.pdf/link?${liffQueryParams().toString()}`, {
+    method: 'POST',
+    headers: liffHeaders(true),
+    body: JSON.stringify({
+      scope: options.scope || 'month',
+      title: options.title || '',
+      note: options.note || ''
+    })
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'export PDF ไม่สำเร็จ');
+  }
+  openExternalUrl(data.url);
+}
+
+function openExternalUrl(url) {
+  if (!url) return;
+  if (window.liff && typeof liff.isInClient === 'function' && liff.isInClient() && typeof liff.openWindow === 'function') {
+    liff.openWindow({ url, external: true });
+    return;
+  }
+  const opened = window.open(url, '_blank', 'noopener');
+  if (!opened) {
+    window.location.assign(url);
+  }
 }
 
 function render() {

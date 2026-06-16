@@ -3,6 +3,7 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const webhookRouter = require('./routes/webhook');
 const db = require('./config/database');
 const dashboardService = require('./services/dashboardService');
@@ -11,6 +12,10 @@ const { ensureDatabase } = require('./database/migrations');
 
 const app = express();
 const port = process.env.PORT || 3000;
+const pdfExportLinks = new Map();
+const PDF_EXPORT_TTL_MS = 5 * 60 * 1000;
+
+app.set('trust proxy', 1);
 
 app.get('/', (req, res) => {
   res.json({
@@ -310,15 +315,43 @@ app.get('/api/liff/export.pdf', async (req, res, next) => {
       title: req.query.title,
       note: req.query.note
     });
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${pdf.filename}"`);
-    res.send(pdf.buffer);
+    sendPdf(res, pdf);
   } catch (error) {
     if (error.statusCode) {
       return res.status(error.statusCode).json({ error: error.message });
     }
     next(error);
   }
+});
+
+app.post('/api/liff/export.pdf/link', express.json({ limit: '16kb' }), async (req, res, next) => {
+  try {
+    const lineUserId = await resolveLiffLineUserId(req);
+    const body = req.body || {};
+    const pdf = await liffDashboardService.exportPdf(lineUserId, body.scope || req.query.scope, {
+      title: body.title || req.query.title,
+      note: body.note || req.query.note
+    });
+    const id = createPdfExportLink(pdf);
+    res.json({
+      url: `${req.protocol}://${req.get('host')}/api/liff/export.pdf/download/${id}`,
+      expiresInSeconds: Math.floor(PDF_EXPORT_TTL_MS / 1000)
+    });
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+    next(error);
+  }
+});
+
+app.get('/api/liff/export.pdf/download/:id', (req, res) => {
+  const item = pdfExportLinks.get(req.params.id);
+  if (!item || item.expiresAt <= Date.now()) {
+    pdfExportLinks.delete(req.params.id);
+    return res.status(404).send('PDF link expired');
+  }
+  sendPdf(res, item);
 });
 
 app.use('/webhook', webhookRouter);
@@ -344,6 +377,30 @@ if (require.main === module) {
 
 module.exports = app;
 module.exports.start = start;
+
+function createPdfExportLink(pdf) {
+  const id = crypto.randomUUID();
+  const item = {
+    buffer: pdf.buffer,
+    filename: pdf.filename,
+    expiresAt: Date.now() + PDF_EXPORT_TTL_MS
+  };
+  pdfExportLinks.set(id, item);
+  const cleanup = setTimeout(() => {
+    pdfExportLinks.delete(id);
+  }, PDF_EXPORT_TTL_MS);
+  if (typeof cleanup.unref === 'function') {
+    cleanup.unref();
+  }
+  return id;
+}
+
+function sendPdf(res, pdf) {
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="${pdf.filename}"`);
+  res.setHeader('Cache-Control', 'private, max-age=300');
+  res.send(pdf.buffer);
+}
 
 async function resolveLiffLineUserId(req) {
   if (canViewDashboard(req) && req.query.lineUserId) {
