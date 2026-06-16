@@ -1271,6 +1271,10 @@ button:disabled {
   margin: 0 0 14px;
 }
 
+.hidden {
+  display: none !important;
+}
+
 .sheet input {
   width: 100%;
   border: 1px solid var(--line);

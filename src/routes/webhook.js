@@ -665,7 +665,8 @@ function parseDebtInput(name, amountText, extraText = '') {
   const extra = String(extraText || '');
   const dueDayMatch = extra.match(/(?:ครบกำหนด|กำหนด|ทุกวันที่|วันที่)\s*(\d{1,2})/);
   const minimumMatch = extra.match(/(?:จ่ายเดือนละ|งวดละ|ขั้นต่ำ)\s*(\d[\d,]*(?:\.\d{1,2})?)/);
-  const type = detectDebtType(`${name} ${extra}`);
+  const customTypeMatch = extra.match(/(?:ประเภท|ชนิด)\s+(.+?)(?=\s+(?:ครบกำหนด|กำหนด|ทุกวันที่|วันที่|จ่ายเดือนละ|งวดละ|ขั้นต่ำ)|$)/);
+  const type = customTypeMatch ? customTypeMatch[1].trim() : detectDebtType(`${name} ${extra}`);
   return {
     name: name.trim(),
     type,
@@ -674,6 +675,7 @@ function parseDebtInput(name, amountText, extraText = '') {
     minimumPayment: minimumMatch ? parseAmount(minimumMatch[1]) : null,
     note: extra.replace(/(?:ครบกำหนด|กำหนด|ทุกวันที่|วันที่)\s*\d{1,2}/g, '')
       .replace(/(?:จ่ายเดือนละ|งวดละ|ขั้นต่ำ)\s*\d[\d,]*(?:\.\d{1,2})?/g, '')
+      .replace(/(?:ประเภท|ชนิด)\s+.+?(?=\s+(?:ครบกำหนด|กำหนด|ทุกวันที่|วันที่|จ่ายเดือนละ|งวดละ|ขั้นต่ำ)|$)/g, '')
       .trim()
   };
 }

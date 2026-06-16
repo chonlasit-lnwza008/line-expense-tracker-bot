@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS debts (
   id BIGSERIAL PRIMARY KEY,
   userId BIGINT NOT NULL REFERENCES users(id),
   name TEXT NOT NULL,
-  type TEXT NOT NULL CHECK (type IN ('borrowed', 'lent', 'installment', 'credit_card', 'loan')),
+  type TEXT NOT NULL,
   principalAmount NUMERIC NOT NULL,
   remainingAmount NUMERIC NOT NULL,
   interestRate NUMERIC NOT NULL DEFAULT 0,

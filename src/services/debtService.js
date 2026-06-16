@@ -55,7 +55,7 @@ function formatDebtType(type) {
     installment: 'ผ่อนสินค้า',
     credit_card: 'บัตรเครดิต',
     loan: 'เงินกู้'
-  }[type] || type;
+  }[type] || type || 'หนี้ทั่วไป';
 }
 
 function formatDue(row) {
@@ -85,7 +85,10 @@ function computeDebtStatus(row) {
 
 function normalizeDebtInput(input = {}) {
   const name = String(input.name || '').trim().slice(0, 120);
-  const type = DEBT_TYPES.has(input.type) ? input.type : 'borrowed';
+  const requestedType = String(input.type || '').trim();
+  const customType = String(input.customType || '').trim();
+  const rawType = requestedType === 'custom' ? customType : requestedType;
+  const type = normalizeDebtType(rawType);
   const principalAmount = Number(input.principalAmount ?? input.amount);
   const remainingAmount = input.remainingAmount === undefined ? principalAmount : Number(input.remainingAmount);
   const interestRate = Number(input.interestRate || 0);
@@ -115,6 +118,13 @@ function normalizeDebtInput(input = {}) {
     dueDate,
     note
   };
+}
+
+function normalizeDebtType(value) {
+  const type = String(value || '').trim().slice(0, 60);
+  if (!type) return 'borrowed';
+  if (DEBT_TYPES.has(type)) return type;
+  return type;
 }
 
 function throwInputError(message, reason) {

@@ -518,7 +518,9 @@ function render() {
           <option value="loan">เงินกู้/หนี้ทั่วไป</option>
           <option value="borrowed">เรายืมคนอื่น</option>
           <option value="lent">คนอื่นยืมเรา</option>
+          <option value="custom">ประเภทอื่น ๆ</option>
         </select></label>
+        <label id="debtCustomTypeRow" class="hidden">พิมพ์ประเภทหนี้เอง<input id="debtCustomType" autocomplete="off" placeholder="เช่น กยศ., ผ่อนรถ, ยืมครอบครัว"></label>
         <label>ครบกำหนดทุกวันที่<input id="debtDueDay" type="number" min="1" max="31" step="1" placeholder="25"></label>
         <label>ยอดจ่ายขั้นต่ำ/งวด<input id="debtMinimumPayment" type="number" min="0" step="1" placeholder="1500"></label>
         <label>โน้ต<input id="debtNote" autocomplete="off" placeholder="เช่น ดอก 0%, จ่ายผ่านแอป"></label>
@@ -958,6 +960,7 @@ function renderDashboardGuide() {
       <div class="guide-card">
         <strong>หนี้สิน</strong>
         <span>เพิ่มหนี้ บัตรเครดิต 12000 ครบกำหนด 25</span>
+        <span>เพิ่มหนี้ กยศ 50000 ประเภท กยศ.</span>
         <span>จ่ายหนี้ บัตรเครดิต 3000</span>
       </div>
       <div class="guide-card">
@@ -1195,6 +1198,7 @@ function bindEvents() {
     if (event.target.id === 'debtModal') closeDebtModal();
   });
   document.getElementById('debtForm').addEventListener('submit', handleSubmitDebt);
+  document.getElementById('debtType').addEventListener('change', syncDebtCustomType);
   document.getElementById('closeDebtPaymentModal').addEventListener('click', closeDebtPaymentModal);
   document.getElementById('debtPaymentModal').addEventListener('click', (event) => {
     if (event.target.id === 'debtPaymentModal') closeDebtPaymentModal();
@@ -1311,6 +1315,8 @@ function openDebtModal() {
   document.getElementById('debtName').value = '';
   document.getElementById('debtAmount').value = '';
   document.getElementById('debtType').value = 'credit_card';
+  document.getElementById('debtCustomType').value = '';
+  syncDebtCustomType();
   document.getElementById('debtDueDay').value = '';
   document.getElementById('debtMinimumPayment').value = '';
   document.getElementById('debtNote').value = '';
@@ -1582,9 +1588,15 @@ async function handleSubmitDebt(event) {
   const saveBtn = document.getElementById('saveDebtBtn');
   saveBtn.disabled = true;
   try {
+    const selectedType = document.getElementById('debtType').value;
+    const customType = document.getElementById('debtCustomType').value.trim();
+    if (selectedType === 'custom' && !customType) {
+      throw new Error('พิมพ์ประเภทหนี้ที่ต้องการก่อน');
+    }
     await createDashboardDebt({
       name: document.getElementById('debtName').value,
-      type: document.getElementById('debtType').value,
+      type: selectedType,
+      customType,
       principalAmount: document.getElementById('debtAmount').value,
       dueDay: document.getElementById('debtDueDay').value,
       minimumPayment: document.getElementById('debtMinimumPayment').value,
@@ -1598,6 +1610,14 @@ async function handleSubmitDebt(event) {
       document.getElementById('saveDebtBtn').disabled = false;
     }
   }
+}
+
+function syncDebtCustomType() {
+  const row = document.getElementById('debtCustomTypeRow');
+  const input = document.getElementById('debtCustomType');
+  const isCustom = document.getElementById('debtType').value === 'custom';
+  row.classList.toggle('hidden', !isCustom);
+  if (!isCustom) input.value = '';
 }
 
 async function handleSubmitDebtPayment(event) {

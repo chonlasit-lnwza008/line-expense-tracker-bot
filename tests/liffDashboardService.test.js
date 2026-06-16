@@ -233,6 +233,27 @@ test('LIFF dashboard can track receivable debt without creating a transaction', 
   assert.equal(overview.transactionCount, 0);
 });
 
+test('LIFF dashboard accepts a custom debt type', async () => {
+  await ensureDatabase();
+  const lineUserId = uniqueLineUserId('custom-debt-type');
+
+  const debt = await liffDashboardService.createDebtFromDashboard(lineUserId, {
+    name: 'กยศ',
+    type: 'custom',
+    customType: 'กยศ.',
+    principalAmount: 50000,
+    dueDay: 5
+  });
+
+  assert.equal(debt.type, 'กยศ.');
+  assert.equal(debt.typeLabel, 'กยศ.');
+
+  const overview = await liffDashboardService.getOverview(lineUserId);
+  assert.equal(overview.debts[0].type, 'กยศ.');
+  assert.equal(overview.debts[0].typeLabel, 'กยศ.');
+  assert.equal(overview.debtSummary.payableTotal, 50000);
+});
+
 test('LIFF dashboard returns monthly transactions, report, spending plan, and image metadata', async () => {
   await ensureDatabase();
   const lineUserId = uniqueLineUserId('monthly-tools');

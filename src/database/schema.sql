@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS debts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   userId INTEGER NOT NULL,
   name TEXT NOT NULL,
-  type TEXT NOT NULL CHECK (type IN ('borrowed', 'lent', 'installment', 'credit_card', 'loan')),
+  type TEXT NOT NULL,
   principalAmount REAL NOT NULL,
   remainingAmount REAL NOT NULL,
   interestRate REAL NOT NULL DEFAULT 0,
