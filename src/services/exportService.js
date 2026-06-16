@@ -185,7 +185,7 @@ function card(x, y, w, h, label, value, color) {
 }
 
 function text(value, x, y, size, color = '#111827', weight = 'normal') {
-  return `<text x="${x}" y="${y}" font-family="Tahoma, Arial, 'Noto Sans Thai', sans-serif" font-size="${size}" font-weight="${weight}" fill="${color}">${escapeXml(value)}</text>`;
+  return `<text x="${x}" y="${y}" font-family="Garuda, Loma, 'Noto Sans Thai', Tahoma, Arial, sans-serif" font-size="${size}" font-weight="${weight}" fill="${color}">${escapeXml(value)}</text>`;
 }
 
 function escapeXml(value) {
