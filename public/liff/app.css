@@ -434,6 +434,7 @@ button:disabled {
 .icon.goal { background: linear-gradient(135deg, #ec4899, #ef4444); }
 .icon.debt { background: linear-gradient(135deg, #8b5cf6, #1b2738); }
 .icon.export { background: linear-gradient(135deg, #64748b, #1b2738); }
+.icon.pdf { background: linear-gradient(135deg, #ef4444, #7f1d1d); }
 
 .menu-card span {
   font-size: 13px;
@@ -858,6 +859,15 @@ button:disabled {
 
 .debt-progress {
   background: linear-gradient(90deg, #8b5cf6, #15a86b);
+}
+
+.debt-percent {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .debt-meta {
@@ -1289,6 +1299,7 @@ button:disabled {
   border: 1px solid var(--line);
   border-radius: 14px;
   padding: 13px 14px;
+  margin-bottom: 14px;
   background: #f8fafc;
 }
 

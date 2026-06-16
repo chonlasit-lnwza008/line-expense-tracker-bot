@@ -172,6 +172,15 @@ test('LIFF dashboard can create goal and export CSV', async () => {
   const csv = await liffDashboardService.exportCsv(lineUserId, 'month');
   assert.match(csv, /date,type,title,category,amount,note,source/);
   assert.match(csv, /กาแฟ/);
+
+  const pdf = await liffDashboardService.exportPdf(lineUserId, 'month', {
+    title: 'Monthly report',
+    note: 'Generated from test'
+  });
+  assert.match(pdf.filename, /\.pdf$/);
+  assert.ok(Buffer.isBuffer(pdf.buffer));
+  assert.equal(pdf.buffer.subarray(0, 4).toString(), '%PDF');
+  assert.ok(pdf.buffer.length > 1000);
 });
 
 test('LIFF dashboard can manage debts and record debt payments', async () => {

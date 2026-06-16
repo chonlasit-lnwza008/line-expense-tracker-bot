@@ -565,6 +565,11 @@ async function exportCsv(lineUserId, scope = 'month') {
   return exportService.exportTransactions(user.id, scope === 'all' ? 'all' : 'month');
 }
 
+async function exportPdf(lineUserId, scope = 'month', options = {}) {
+  const user = await transactionService.findOrCreateUser(lineUserId);
+  return exportService.exportTransactionsPdf(user.id, scope === 'all' ? 'all' : 'month', options);
+}
+
 module.exports = {
   getOverview,
   getTransactionImage,
@@ -578,5 +583,6 @@ module.exports = {
   updateDebtFromDashboard,
   payDebtFromDashboard,
   cancelDebtFromDashboard,
-  exportCsv
+  exportCsv,
+  exportPdf
 };

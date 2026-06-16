@@ -303,6 +303,24 @@ app.get('/api/liff/export', async (req, res, next) => {
   }
 });
 
+app.get('/api/liff/export.pdf', async (req, res, next) => {
+  try {
+    const lineUserId = await resolveLiffLineUserId(req);
+    const pdf = await liffDashboardService.exportPdf(lineUserId, req.query.scope, {
+      title: req.query.title,
+      note: req.query.note
+    });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${pdf.filename}"`);
+    res.send(pdf.buffer);
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+    next(error);
+  }
+});
+
 app.use('/webhook', webhookRouter);
 
 app.use((err, req, res, next) => {

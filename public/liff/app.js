@@ -288,6 +288,30 @@ async function downloadDashboardCsv(scope = 'month') {
   URL.revokeObjectURL(url);
 }
 
+async function downloadDashboardPdf(options = {}) {
+  const scope = options.scope || 'month';
+  const params = liffQueryParams();
+  params.set('scope', scope);
+  if (options.title) params.set('title', options.title);
+  if (options.note) params.set('note', options.note);
+
+  const response = await fetch(`/api/liff/export.pdf?${params.toString()}`, {
+    headers: liffHeaders()
+  });
+  if (!response.ok) {
+    throw new Error('export PDF ไม่สำเร็จ');
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `line-expense-${scope}.pdf`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 function render() {
   const data = state.data;
   const topCategory = data.categories[0] ? data.categories[0].category : 'ยังไม่มีหมวดเด่น';
@@ -347,6 +371,7 @@ function render() {
         ${menuCard('goal', 'เป้า', 'ตั้งเป้า', 'เงินเก็บ', 'open-goal')}
         ${menuCard('debt', 'หนี้', 'หนี้สิน', 'จ่าย/ติดตาม', 'scroll-debts')}
         ${menuCard('export', 'CSV', 'Export', 'เปิด Excel', 'export-month')}
+        ${menuCard('pdf', 'PDF', 'รายงาน PDF', 'สรุปพร้อมส่ง', 'open-export-pdf')}
       </section>
 
       <section class="section-title">
@@ -548,6 +573,23 @@ function render() {
       </form>
     </div>
 
+    <div id="exportPdfModal" class="modal">
+      <form class="sheet" id="exportPdfForm">
+        <h3>Export PDF</h3>
+        <p class="sheet-hint">สร้างรายงานสรุปบัญชีเป็น PDF มีภาพรวม หมวดเด่น และรายการล่าสุด</p>
+        <label>ช่วงข้อมูล<select id="pdfScope">
+          <option value="month">เดือนนี้</option>
+          <option value="all">ทั้งหมด</option>
+        </select></label>
+        <label>ชื่อรายงาน<input id="pdfTitle" autocomplete="off" placeholder="เช่น รายงานบัญชีส่วนตัว"></label>
+        <label>หมายเหตุ<input id="pdfNote" autocomplete="off" placeholder="เช่น ใช้ส่งให้ตัวเองหรือครอบครัว"></label>
+        <div class="sheet-actions">
+          <button class="secondary" type="button" id="closeExportPdfModal">ยกเลิก</button>
+          <button class="primary" type="submit" id="saveExportPdfBtn">ดาวน์โหลด PDF</button>
+        </div>
+      </form>
+    </div>
+
     <div id="imageModal" class="modal">
       <div class="sheet image-sheet">
         <h3>รูปแนบรายการ</h3>
@@ -660,6 +702,17 @@ function iconGraphic(name, fallback = '') {
         <path d="M20 27h8"/>
         <path d="M24 19v16"/>
         <path d="m18 29 6 6 6-6"/>
+      </svg>`,
+    pdf: `
+      <svg viewBox="0 0 48 48" role="img" aria-label="Export PDF">
+        <path d="M13 5h17l7 7v31H13z"/>
+        <path d="M30 5v8h7"/>
+        <path d="M18 22h14"/>
+        <path d="M18 29h14"/>
+        <path d="M18 36h8"/>
+        <path d="M9 18h11v15H9z"/>
+        <path d="M12 23h5"/>
+        <path d="M12 28h4"/>
       </svg>`,
     insight: `
       <svg viewBox="0 0 48 48" role="img" aria-label="คำแนะนำ">
@@ -925,6 +978,10 @@ function renderDebts(debts = [], summary = {}) {
               <div class="debt-amount">${formatMoney(debt.remainingAmount)} <small>เหลือจาก ${formatMoney(debt.principalAmount)}</small></div>
               <div class="goal-progress" aria-label="จ่ายแล้ว ${percent}%">
                 <div class="goal-progress-fill debt-progress" style="width:${percent}%"></div>
+              </div>
+              <div class="debt-percent">
+                <span>ชำระแล้ว ${percent}%</span>
+                <span>เหลือ ${Math.max(0, 100 - percent)}%</span>
               </div>
               <div class="debt-meta">
                 <span>${escapeHtml(debt.typeLabel)}</span>
@@ -1204,6 +1261,11 @@ function bindEvents() {
     if (event.target.id === 'debtPaymentModal') closeDebtPaymentModal();
   });
   document.getElementById('debtPaymentForm').addEventListener('submit', handleSubmitDebtPayment);
+  document.getElementById('closeExportPdfModal').addEventListener('click', closeExportPdfModal);
+  document.getElementById('exportPdfModal').addEventListener('click', (event) => {
+    if (event.target.id === 'exportPdfModal') closeExportPdfModal();
+  });
+  document.getElementById('exportPdfForm').addEventListener('submit', handleSubmitExportPdf);
   document.getElementById('closeImageModal').addEventListener('click', closeImageModal);
   document.getElementById('imageModal').addEventListener('click', (event) => {
     if (event.target.id === 'imageModal') closeImageModal();
@@ -1248,6 +1310,10 @@ function openQuickModal(type) {
   }
   if (type === 'debt') {
     openDebtModal();
+    return;
+  }
+  if (type === 'export-pdf') {
+    openExportPdfModal();
     return;
   }
   state.modalType = type;
@@ -1344,6 +1410,18 @@ function openDebtPaymentModal(id) {
 function closeDebtPaymentModal() {
   document.getElementById('debtPaymentModal').classList.remove('open');
   state.payingDebt = null;
+}
+
+function openExportPdfModal() {
+  document.getElementById('pdfScope').value = 'month';
+  document.getElementById('pdfTitle').value = `รายงานบัญชี ${state.month}`;
+  document.getElementById('pdfNote').value = '';
+  document.getElementById('exportPdfModal').classList.add('open');
+  setTimeout(() => document.getElementById('pdfTitle').focus(), 50);
+}
+
+function closeExportPdfModal() {
+  document.getElementById('exportPdfModal').classList.remove('open');
 }
 
 function findGoal(id) {
@@ -1637,6 +1715,28 @@ async function handleSubmitDebtPayment(event) {
   } finally {
     if (document.getElementById('saveDebtPaymentBtn')) {
       document.getElementById('saveDebtPaymentBtn').disabled = false;
+    }
+  }
+}
+
+async function handleSubmitExportPdf(event) {
+  event.preventDefault();
+  const saveBtn = document.getElementById('saveExportPdfBtn');
+  saveBtn.disabled = true;
+  saveBtn.textContent = 'กำลังสร้าง PDF...';
+  try {
+    await downloadDashboardPdf({
+      scope: document.getElementById('pdfScope').value,
+      title: document.getElementById('pdfTitle').value.trim(),
+      note: document.getElementById('pdfNote').value.trim()
+    });
+    closeExportPdfModal();
+  } catch (error) {
+    alert(error.message);
+  } finally {
+    if (document.getElementById('saveExportPdfBtn')) {
+      document.getElementById('saveExportPdfBtn').disabled = false;
+      document.getElementById('saveExportPdfBtn').textContent = 'ดาวน์โหลด PDF';
     }
   }
 }
