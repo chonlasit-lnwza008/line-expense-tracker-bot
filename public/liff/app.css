@@ -349,6 +349,91 @@ button:disabled {
   transform: scale(0.96);
 }
 
+/* Dashboard views */
+.view-switcher {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 18px;
+}
+
+.view-tab {
+  border: 1px solid rgba(230, 236, 242, 0.95);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--shadow-sm);
+  color: var(--ink);
+  min-width: 0;
+  min-height: 76px;
+  padding: 9px 5px;
+  display: grid;
+  place-items: center;
+  gap: 3px;
+  transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+}
+
+.view-tab:active {
+  transform: translateY(1px) scale(0.98);
+}
+
+.view-tab.active {
+  border-color: rgba(18, 168, 153, 0.45);
+  background: linear-gradient(180deg, #ecfffb, #ffffff);
+  color: #0f766e;
+}
+
+.view-tab-icon {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+}
+
+.view-tab-icon svg {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.view-tab strong {
+  font-size: 12px;
+  line-height: 1.15;
+  text-align: center;
+}
+
+.view-tab small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.1;
+  text-align: center;
+}
+
+.app.view-overview .transactions-section,
+.app.view-overview .finance-section,
+.app.view-overview .reports-section,
+.app.view-transactions .overview-section,
+.app.view-transactions .finance-section,
+.app.view-transactions .reports-section,
+.app.view-finance .overview-section,
+.app.view-finance .transactions-section,
+.app.view-finance .reports-section,
+.app.view-reports .overview-section,
+.app.view-reports .transactions-section,
+.app.view-reports .finance-section {
+  display: none;
+}
+
+.app.view-transactions .transactions-section:first-of-type,
+.app.view-finance .finance-section:first-of-type,
+.app.view-reports .reports-section:first-of-type {
+  margin-top: 8px;
+}
+
 /* Menu grid */
 .menu-grid {
   display: grid;

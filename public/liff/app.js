@@ -8,6 +8,7 @@ const state = {
   editingTransaction: null,
   savingGoal: null,
   payingDebt: null,
+  activeView: 'overview',
   transactionFilter: {
     period: 'month',
     type: 'all',
@@ -346,7 +347,7 @@ function render() {
   const topCategory = data.categories[0] ? data.categories[0].category : 'ยังไม่มีหมวดเด่น';
   const todayNet = data.todayTotals.net;
   document.getElementById('app').innerHTML = `
-    <main class="app">
+    <main class="app view-${state.activeView}">
       <section class="topbar">
         <div class="profile">
           ${profilePicture()}
@@ -385,105 +386,107 @@ function render() {
         ${renderSmartInsights(data.smartInsights)}
       </section>
 
-      <section class="section-title">
+      ${renderViewSwitcher()}
+
+      <section class="section-title overview-section">
         <h2>เมนูบัญชี</h2>
         <small>${escapeHtml(data.month)}</small>
       </section>
-      <section class="menu-grid">
+      <section class="menu-grid overview-section">
         ${menuCard('expense', 'จ่าย', 'บันทึกรายจ่าย', 'พิมพ์ไว', 'open-expense')}
         ${menuCard('income', 'รับ', 'บันทึกรายรับ', 'เงินเข้า', 'open-income')}
         ${menuCard('slip', 'สลิป', 'ส่งสลิป/บิล', 'ตรวจ QR', 'slip-help')}
         ${menuCard('today', 'วันนี้', 'สรุปวันนี้', 'ยอดรวม', 'สรุปวันนี้')}
-        ${menuCard('chart', 'กราฟ', 'กราฟรายจ่าย', 'ตามหมวด', 'scroll-chart')}
-        ${menuCard('edit', 'แก้', 'รายการเดือนนี้', 'กรอง/แก้/ลบ', 'scroll-edit')}
+        ${menuCard('chart', 'กราฟ', 'กราฟรายจ่าย', 'ตามหมวด', 'view-reports')}
+        ${menuCard('edit', 'แก้', 'รายการเดือนนี้', 'กรอง/แก้/ลบ', 'view-transactions')}
         ${menuCard('budget', 'งบ', 'ตั้งงบ', 'คุมใช้จ่าย', 'open-budget')}
         ${menuCard('goal', 'เป้า', 'ตั้งเป้า', 'เงินเก็บ', 'open-goal')}
-        ${menuCard('debt', 'หนี้', 'หนี้สิน', 'จ่าย/ติดตาม', 'scroll-debts')}
+        ${menuCard('debt', 'หนี้', 'หนี้สิน', 'จ่าย/ติดตาม', 'view-finance')}
         ${menuCard('export', 'CSV', 'Export', 'เปิด Excel', 'export-month')}
         ${menuCard('pdf', 'PDF', 'รายงาน PDF', 'สรุปพร้อมส่ง', 'open-export-pdf')}
       </section>
 
-      <section class="section-title">
+      <section class="section-title overview-section">
         <h2>วันนี้</h2>
         <small>รายรับ/รายจ่าย</small>
       </section>
-      <section class="panel today-panel">
+      <section class="panel today-panel overview-section">
         <div><span>รับวันนี้</span><strong class="income-text">${formatMoney(data.todayTotals.income)}</strong></div>
         <div><span>จ่ายวันนี้</span><strong class="expense-text">${formatMoney(data.todayTotals.expense)}</strong></div>
         <div><span>สุทธิวันนี้</span><strong>${formatMoney(data.todayTotals.net)}</strong></div>
       </section>
 
-      <section class="section-title">
+      <section class="section-title overview-section">
         <h2>เป้าหมายเดือนนี้</h2>
         <small>ใช้ได้อีกเท่าไหร่</small>
       </section>
-      <section class="panel">
+      <section class="panel overview-section">
         ${renderSpendingPlan(data.spendingPlan)}
       </section>
 
-      <section class="section-title">
+      <section class="section-title finance-section">
         <h2>งบประมาณ</h2>
         <button class="text-action" type="button" data-open="budget">ตั้งงบ</button>
       </section>
-      <section class="panel">
+      <section class="panel finance-section">
         ${renderBudgets(data.budgets)}
       </section>
 
-      <section class="section-title">
+      <section class="section-title finance-section">
         <h2>เป้าหมายเก็บเงิน</h2>
         <button class="text-action" type="button" data-open="goal">ตั้งเป้า</button>
       </section>
-      <section class="panel">
+      <section class="panel finance-section">
         ${renderGoals(data.goals)}
       </section>
 
-      <section id="debts" class="section-title">
+      <section id="debts" class="section-title finance-section">
         <h2>หนี้สิน</h2>
         <button class="text-action" type="button" data-open="debt">เพิ่มหนี้</button>
       </section>
-      <section class="panel">
+      <section class="panel finance-section">
         ${renderDebts(data.debts, data.debtSummary)}
       </section>
 
-      <section id="guide" class="section-title">
+      <section id="guide" class="section-title reports-section">
         <h2>คู่มือเร็ว</h2>
         <small>ตัวอย่างใช้งานจริง</small>
       </section>
-      <section class="panel">
+      <section class="panel reports-section">
         ${renderDashboardGuide()}
       </section>
 
-      <section id="chart" class="section-title">
+      <section id="chart" class="section-title reports-section">
         <h2>กราฟรายจ่าย</h2>
         <small>ตามหมวด</small>
       </section>
-      <section class="panel">
+      <section class="panel reports-section">
         ${renderCategoryBars(data.categories)}
       </section>
 
-      <section class="section-title">
+      <section class="section-title reports-section">
         <h2>รายงานเดือนนี้</h2>
         <small>สรุปพร้อมคำแนะนำ</small>
       </section>
-      <section class="panel report-card">
+      <section class="panel report-card reports-section">
         ${renderMonthlyReport(data.monthlyReport)}
       </section>
 
-      <section id="edit" class="section-title">
+      <section id="edit" class="section-title transactions-section">
         <h2>รายการเดือนนี้</h2>
         <button class="text-action" type="button" data-scroll="edit">กรองแล้วจัดการได้เลย</button>
       </section>
-      <section class="panel">
+      <section class="panel transactions-section">
         ${renderTransactionFilters(data.transactions || data.recentSevenDays)}
         ${renderTransactions(getFilteredTransactions(data.transactions || data.recentSevenDays))}
       </section>
     </main>
 
     <nav class="tabbar">
-      <button class="active" type="button" data-scroll="top"><span class="tab-icon">${iconGraphic('home')}</span><span>หน้าหลัก</span></button>
-      <button type="button" data-command="สรุปวันนี้"><span class="tab-icon">${iconGraphic('today')}</span><span>วันนี้</span></button>
-      <button type="button" data-scroll="chart"><span class="tab-icon">${iconGraphic('chart')}</span><span>กราฟ</span></button>
-      <button type="button" data-scroll="edit"><span class="tab-icon">${iconGraphic('edit')}</span><span>แก้ไข</span></button>
+      ${bottomTab('overview', 'home', 'หน้าหลัก')}
+      ${bottomTab('transactions', 'edit', 'รายการ')}
+      ${bottomTab('finance', 'debt', 'หนี้/เป้า')}
+      ${bottomTab('reports', 'chart', 'รายงาน')}
     </nav>
 
     <div id="quickModal" class="modal">
@@ -634,12 +637,58 @@ function render() {
   bindEvents();
 }
 
+function renderViewSwitcher() {
+  return `
+    <section class="view-switcher" aria-label="เลือกมุมมอง Dashboard">
+      ${viewTab('overview', 'ภาพรวม', 'เมนูด่วน', 'home')}
+      ${viewTab('transactions', 'รายการ', 'แก้/กรอง', 'edit')}
+      ${viewTab('finance', 'หนี้/เป้า', 'คุมเงิน', 'debt')}
+      ${viewTab('reports', 'รายงาน', 'กราฟ/PDF', 'chart')}
+    </section>
+  `;
+}
+
+function viewTab(key, label, hint, iconName) {
+  const active = state.activeView === key ? ' active' : '';
+  return `
+    <button class="view-tab${active}" type="button" data-view="${key}">
+      <span class="view-tab-icon">${iconGraphic(iconName)}</span>
+      <strong>${escapeHtml(label)}</strong>
+      <small>${escapeHtml(hint)}</small>
+    </button>
+  `;
+}
+
+function bottomTab(key, iconName, label) {
+  const active = state.activeView === key ? 'active' : '';
+  return `
+    <button class="${active}" type="button" data-view="${key}">
+      <span class="tab-icon">${iconGraphic(iconName)}</span>
+      <span>${escapeHtml(label)}</span>
+    </button>
+  `;
+}
+
+function navigateView(view) {
+  state.activeView = view || 'overview';
+  const sectionByView = {
+    overview: 'top',
+    transactions: 'edit',
+    finance: 'top',
+    reports: 'chart'
+  };
+  render();
+  scrollToSection(sectionByView[state.activeView] || 'top');
+}
+
 function menuCard(iconClass, iconText, label, hint, action) {
   const attr = action.startsWith('scroll-')
     ? `data-scroll="${action.replace('scroll-', '')}"`
     : action.startsWith('open-')
       ? `data-open="${action.replace('open-', '')}"`
-      : `data-command="${escapeHtml(action)}"`;
+      : action.startsWith('view-')
+        ? `data-view="${action.replace('view-', '')}"`
+        : `data-command="${escapeHtml(action)}"`;
   return `
     <button class="menu-card" type="button" ${attr}>
       <div class="icon ${iconClass}" aria-hidden="true">${iconGraphic(iconClass, iconText)}</div>
@@ -1212,6 +1261,9 @@ function bindEvents() {
   document.querySelectorAll('[data-scroll]').forEach((button) => {
     button.addEventListener('click', () => scrollToSection(button.dataset.scroll));
   });
+  document.querySelectorAll('[data-view]').forEach((button) => {
+    button.addEventListener('click', () => navigateView(button.dataset.view));
+  });
   document.querySelectorAll('[data-open]').forEach((button) => {
     button.addEventListener('click', () => openQuickModal(button.dataset.open));
   });
@@ -1233,6 +1285,7 @@ function bindEvents() {
   document.querySelectorAll('[data-filter-kind]').forEach((button) => {
     button.addEventListener('click', () => {
       state.transactionFilter[button.dataset.filterKind] = button.dataset.filterValue;
+      state.activeView = 'transactions';
       render();
       scrollToSection('edit');
     });
@@ -1241,6 +1294,7 @@ function bindEvents() {
   if (transactionSearch) {
     transactionSearch.addEventListener('input', () => {
       state.transactionFilter.search = transactionSearch.value;
+      state.activeView = 'transactions';
       render();
       scrollToSection('edit');
       const nextSearch = document.getElementById('transactionSearch');
@@ -1325,7 +1379,10 @@ function scrollToSection(id) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     return;
   }
-  document.getElementById(id).scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const target = document.getElementById(id);
+  if (target) {
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 }
 
 function openQuickModal(type) {
