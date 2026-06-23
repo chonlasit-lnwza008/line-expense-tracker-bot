@@ -424,7 +424,7 @@ function render() {
         ${renderSpendingPlan(data.spendingPlan)}
       </section>
 
-      <section class="section-title finance-section">
+      <section id="finance-start" class="section-title finance-section">
         <h2>งบประมาณ</h2>
         <button class="text-action" type="button" data-open="budget">ตั้งงบ</button>
       </section>
@@ -448,7 +448,7 @@ function render() {
         ${renderDebts(data.debts, data.debtSummary)}
       </section>
 
-      <section id="guide" class="section-title reports-section">
+      <section id="reports-start" class="section-title reports-section">
         <h2>คู่มือเร็ว</h2>
         <small>ตัวอย่างใช้งานจริง</small>
       </section>
@@ -674,8 +674,8 @@ function navigateView(view) {
   const sectionByView = {
     overview: 'top',
     transactions: 'edit',
-    finance: 'top',
-    reports: 'chart'
+    finance: 'finance-start',
+    reports: 'reports-start'
   };
   render();
   scrollToSection(sectionByView[state.activeView] || 'top');
