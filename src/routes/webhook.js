@@ -19,6 +19,12 @@ const { toDateOnly, formatDisplayDate, formatDisplayMonth } = require('../utils/
 const router = express.Router();
 const hasLineCredentials = Boolean(lineConfig.channelAccessToken && lineConfig.channelSecret);
 const lineMiddleware = hasLineCredentials ? line.middleware(lineConfig) : express.json();
+const flexImageUrls = {
+  saved: process.env.FLEX_IMAGE_SAVED_URL || '',
+  processing: process.env.FLEX_IMAGE_PROCESSING_URL || '',
+  pending: process.env.FLEX_IMAGE_PENDING_URL || '',
+  summary: process.env.FLEX_IMAGE_SUMMARY_URL || ''
+};
 
 router.post('/', lineMiddleware, async (req, res, next) => {
   try {
@@ -693,10 +699,26 @@ function flexMessage(altText, contents) {
   return { type: 'flex', altText, contents };
 }
 
+function flexHero(key) {
+  const url = flexImageUrls[key];
+  if (!/^https:\/\/.+/i.test(String(url || '').trim())) return {};
+  return {
+    hero: {
+      type: 'image',
+      url: String(url).trim(),
+      size: 'full',
+      aspectRatio: '20:9',
+      aspectMode: 'cover',
+      backgroundColor: '#fef3c7'
+    }
+  };
+}
+
 function buildProcessingFlex() {
   return flexMessage('กำลังอ่านสลิปด้วย OCR', {
     type: 'bubble',
     size: 'mega',
+    ...flexHero('processing'),
     header: flexHeader('กำลังอ่านสลิป', 'OCR ฟรีอาจใช้เวลาสักครู่', '#0f766e'),
     body: {
       type: 'box',
@@ -760,6 +782,7 @@ function buildPendingFlex(tx, options = {}) {
   return flexMessage('ตรวจสอบรายการก่อนบันทึก', {
     type: 'bubble',
     size: 'mega',
+    ...flexHero('pending'),
     header: flexHeader(options.heading || 'ตรวจสอบก่อนบันทึก', 'กดยืนยันเมื่อข้อมูลถูกต้อง', '#0f766e'),
     body: {
       type: 'box',
@@ -793,6 +816,7 @@ function buildResultFlex(title, rows, color = '#16a34a') {
   return flexMessage(title, {
     type: 'bubble',
     size: 'mega',
+    ...flexHero(color === '#16a34a' ? 'saved' : ''),
     header: flexHeader(title, 'LINE Expense Tracker Bot', color),
     body: {
       type: 'box',
@@ -976,6 +1000,7 @@ function buildDailySummaryFlex(summary) {
   return flexMessage('สรุปวันนี้', {
     type: 'bubble',
     size: 'mega',
+    ...flexHero('summary'),
     header: flexHeader(`สรุปวันนี้ ${formatDisplayDate(summary.date)}`, 'ภาพรวมรายรับรายจ่าย', '#2563eb'),
     body: {
       type: 'box',

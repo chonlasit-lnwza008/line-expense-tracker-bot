@@ -354,6 +354,19 @@ help
 
 ปุ่ม `PDF` ใน Dashboard จะเปิดฟอร์มให้เลือก `เดือนนี้` หรือ `ทั้งหมด` ใส่ชื่อรายงาน/หมายเหตุ แล้วดาวน์โหลดไฟล์ PDF ที่มีสรุปรายรับ รายจ่าย คงเหลือ หมวดรายจ่ายเด่น และรายการล่าสุด เหมาะสำหรับส่งต่อให้ตัวเองหรือครอบครัว
 
+### ใส่รูปในการ์ด LINE
+
+Flex Message รองรับรูปด้านบนการ์ดได้ ถ้าต้องการให้การ์ด `บันทึกแล้ว`, `กำลังอ่านสลิป`, `ตรวจสอบก่อนบันทึก`, และ `สรุปวันนี้` มีภาพประกอบ ให้ฝากรูปไว้บน URL แบบ `https://` ที่ LINE เปิดดูได้ เช่น Supabase Storage, Cloudinary, GitHub raw หรือไฟล์ public บนเว็บ แล้วใส่ใน Render Environment:
+
+```env
+FLEX_IMAGE_SAVED_URL=https://example.com/saved.png
+FLEX_IMAGE_PROCESSING_URL=https://example.com/processing.png
+FLEX_IMAGE_PENDING_URL=https://example.com/pending.png
+FLEX_IMAGE_SUMMARY_URL=https://example.com/summary.png
+```
+
+ถ้าเว้นว่างไว้ ระบบจะส่งการ์ดแบบเดิมโดยไม่มีรูป ไม่กระทบการบันทึกหรือ OCR
+
 ### จัดการหนี้สิน
 
 ใช้ได้ทั้งในแชทและ Dashboard:
