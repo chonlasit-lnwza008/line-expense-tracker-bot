@@ -148,6 +148,85 @@ async function createDashboardTransaction(text) {
   return data.transaction;
 }
 
+async function saveCustomCategory(name) {
+  const trimmed = String(name || '').trim().slice(0, 80);
+  if (!trimmed || trimmed === 'ทั้งหมด') return null;
+  if (state.data && Array.isArray(state.data.customCategories)) {
+    const exists = state.data.customCategories.some((category) => category.name === trimmed);
+    if (exists) return state.data.customCategories.find((category) => category.name === trimmed);
+  }
+
+  const response = await fetch(`/api/liff/categories?${liffQueryParams().toString()}`, {
+    method: 'POST',
+    headers: liffHeaders(true),
+    body: JSON.stringify({ name: trimmed })
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'บันทึกหมวดไม่สำเร็จ');
+  }
+  if (state.data) {
+    if (!Array.isArray(state.data.customCategories)) state.data.customCategories = [];
+    if (!state.data.customCategories.some((category) => category.name === data.category.name)) {
+      state.data.customCategories.push(data.category);
+    }
+  }
+  return data.category;
+}
+
+async function saveCategoryRule(payload) {
+  const response = await fetch(`/api/liff/category-rules?${liffQueryParams().toString()}`, {
+    method: 'POST',
+    headers: liffHeaders(true),
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'บันทึกกฎหมวดไม่สำเร็จ');
+  }
+  if (state.data) {
+    if (!Array.isArray(state.data.categoryRules)) state.data.categoryRules = [];
+    const index = state.data.categoryRules.findIndex((rule) => String(rule.id) === String(data.rule.id));
+    if (index >= 0) {
+      state.data.categoryRules[index] = data.rule;
+    } else {
+      state.data.categoryRules.push(data.rule);
+    }
+  }
+  return data.rule;
+}
+
+async function deleteCategoryRule(id) {
+  const response = await fetch(`/api/liff/category-rules/${encodeURIComponent(id)}?${liffQueryParams().toString()}`, {
+    method: 'DELETE',
+    headers: liffHeaders()
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'ลบกฎหมวดไม่สำเร็จ');
+  }
+  if (state.data && Array.isArray(state.data.categoryRules)) {
+    state.data.categoryRules = state.data.categoryRules.filter((rule) => String(rule.id) !== String(id));
+  }
+  return data.rule;
+}
+
+async function applyCategoryRules() {
+  const response = await fetch(`/api/liff/category-rules/apply?${liffQueryParams().toString()}`, {
+    method: 'POST',
+    headers: liffHeaders(true),
+    body: JSON.stringify({ month: state.month })
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'ปรับหมวดไม่สำเร็จ');
+  }
+  await loadOverview();
+  render();
+  alert(`ปรับหมวดแล้ว ${money.format(data.updatedCount || 0)} รายการ`);
+  return data;
+}
+
 async function updateDashboardTransaction(id, payload) {
   const response = await fetch(`/api/liff/transactions/${encodeURIComponent(id)}?${liffQueryParams().toString()}`, {
     method: 'PATCH',
@@ -477,6 +556,7 @@ function render() {
         <button class="text-action" type="button" data-scroll="edit">กรองแล้วจัดการได้เลย</button>
       </section>
       <section class="panel transactions-section">
+        ${renderCategoryRulePanel()}
         ${renderTransactionFilters(data.transactions || data.recentSevenDays)}
         ${renderTransactions(getFilteredTransactions(data.transactions || data.recentSevenDays))}
       </section>
@@ -814,10 +894,41 @@ function iconGraphic(name, fallback = '') {
   return icons[name] || `<span>${escapeHtml(fallback)}</span>`;
 }
 
-function categoryPicker(id, value = '', label = 'เลือกหมวด', options = {}) {
+function getCustomCategoryNames() {
+  const names = new Set();
+  const data = state.data || {};
+  (data.customCategories || []).forEach((category) => {
+    const name = typeof category === 'string' ? category : category.name;
+    if (name) names.add(name);
+  });
+  (data.categoryRules || []).forEach((rule) => {
+    if (rule.category) names.add(rule.category);
+  });
+  ['transactions', 'recentSevenDays', 'recent'].forEach((key) => {
+    (data[key] || []).forEach((row) => {
+      if (row.category) names.add(row.category);
+    });
+  });
+  (data.budgets || []).forEach((budget) => {
+    if (budget.category) names.add(budget.category);
+  });
+  return [...names]
+    .map((name) => String(name || '').trim())
+    .filter((name) => name && name !== 'ทั้งหมด');
+}
+
+function getCategoryOptions(options = {}) {
   const categories = options.includeAll
-    ? STANDARD_CATEGORIES
+    ? [...STANDARD_CATEGORIES]
     : STANDARD_CATEGORIES.filter((category) => category !== 'ทั้งหมด');
+  getCustomCategoryNames().forEach((category) => {
+    if (!categories.includes(category)) categories.push(category);
+  });
+  return categories;
+}
+
+function categoryPicker(id, value = '', label = 'เลือกหมวด', options = {}) {
+  const categories = getCategoryOptions(options);
   return `
     <div class="category-field" data-category-field="${id}">
       <div class="category-label">${escapeHtml(label)}</div>
@@ -878,13 +989,19 @@ function bindCategoryPickers() {
   });
 
   document.querySelectorAll('[data-category-custom]').forEach((button) => {
-    button.addEventListener('click', () => {
+    button.addEventListener('click', async () => {
       const target = button.dataset.categoryCustom;
       const currentValue = document.getElementById(target).value;
       const value = prompt('พิมพ์ชื่อหมวดที่ต้องการเพิ่ม', currentValue && !STANDARD_CATEGORIES.includes(currentValue) ? currentValue : '');
       if (value === null) return;
       const trimmed = value.trim().slice(0, 80);
-      if (trimmed) setCategoryValue(target, trimmed);
+      if (!trimmed) return;
+      setCategoryValue(target, trimmed);
+      try {
+        await saveCustomCategory(trimmed);
+      } catch (error) {
+        alert(error.message);
+      }
     });
   });
 }
@@ -1184,6 +1301,40 @@ function filteredSummary(rows) {
   }, { count: 0, income: 0, expense: 0 });
 }
 
+function renderCategoryRulePanel() {
+  const rules = (state.data && state.data.categoryRules) || [];
+  return `
+    <div class="rule-panel">
+      <div class="rule-head">
+        <div>
+          <strong>กฎหมวดหมู่ของฉัน</strong>
+          <span>จำคำค้นแล้วจัดหมวดอัตโนมัติ เช่น amazon cafe → เครื่องดื่ม</span>
+        </div>
+        <button class="mini-action ghost" type="button" id="applyCategoryRulesBtn">ปรับเดือนนี้</button>
+      </div>
+      <form id="categoryRuleForm" class="rule-form">
+        <label>
+          <span>คำค้น</span>
+          <input id="ruleKeyword" type="text" placeholder="เช่น amazon cafe, เต่าบิน, homepro" maxlength="80">
+        </label>
+        ${categoryPicker('ruleCategory', '', 'จัดเข้าหมวด')}
+        <button class="primary" type="submit" id="saveCategoryRuleBtn">จำกฎนี้</button>
+      </form>
+      <div class="rule-list">
+        ${rules.length ? rules.map((rule) => `
+          <div class="rule-item">
+            <div>
+              <strong>${escapeHtml(rule.keyword)}</strong>
+              <span>${escapeHtml(rule.category)}</span>
+            </div>
+            <button class="mini-action" type="button" data-rule-delete-id="${escapeHtml(rule.id)}">ลบ</button>
+          </div>
+        `).join('') : '<div class="empty compact">ยังไม่มีกฎส่วนตัว เพิ่มคำค้นที่ใช้บ่อยได้เลย</div>'}
+      </div>
+    </div>
+  `;
+}
+
 function renderTransactionFilters(rows) {
   const categories = uniqueTransactionCategories(rows);
   const filteredRows = getFilteredTransactions(rows);
@@ -1231,6 +1382,7 @@ function renderTransactions(rows) {
         const typeClass = isIncome ? 'income-text' : 'expense-text';
         const sign = isIncome ? '+' : '-';
         const badgeLabel = isIncome ? 'รับ' : 'จ่าย';
+        const quickCategories = getQuickCategoryOptions(row).slice(0, 5);
         return `
           <div class="tx">
             <div>
@@ -1239,6 +1391,13 @@ function renderTransactions(rows) {
                 <span>${escapeHtml(row.title)}</span>
               </div>
               <div class="tx-meta">${escapeHtml(row.displayDate)} · ${escapeHtml(row.category)}</div>
+              ${quickCategories.length ? `
+                <div class="tx-quick">
+                  ${quickCategories.map((category) => `
+                    <button class="quick-category" type="button" data-quick-category-id="${escapeHtml(row.id)}" data-quick-category-value="${escapeHtml(category)}">${escapeHtml(category)}</button>
+                  `).join('')}
+                </div>
+              ` : ''}
             </div>
             <div class="tx-side">
               <div class="tx-amount ${typeClass}">${sign}${formatMoney(row.amount)}</div>
@@ -1252,6 +1411,17 @@ function renderTransactions(rows) {
       }).join('')}
     </div>
   `;
+}
+
+function getQuickCategoryOptions(row) {
+  const current = row && row.category;
+  const options = getCategoryOptions()
+    .filter((category) => category !== current && category !== 'รายรับ');
+  const preferred = ['เครื่องดื่ม', 'อาหาร', 'สิ่งใช้ประจำวัน', 'เดินทาง', 'บิลประจำ', 'ของใช้', 'อื่นๆ'];
+  return [
+    ...preferred.filter((category) => options.includes(category)),
+    ...options.filter((category) => !preferred.includes(category))
+  ];
 }
 
 function bindEvents() {
@@ -1272,6 +1442,13 @@ function bindEvents() {
   });
   document.querySelectorAll('[data-image-id]').forEach((button) => {
     button.addEventListener('click', () => openImageModal(button.dataset.imageId));
+  });
+  document.querySelectorAll('[data-quick-category-id]').forEach((button) => {
+    button.addEventListener('click', () => handleQuickCategory(
+      button.dataset.quickCategoryId,
+      button.dataset.quickCategoryValue,
+      button
+    ));
   });
   document.querySelectorAll('[data-goal-save-id]').forEach((button) => {
     button.addEventListener('click', () => openGoalSavingModal(button.dataset.goalSaveId));
@@ -1305,6 +1482,28 @@ function bindEvents() {
     });
   }
   bindCategoryPickers();
+
+  const categoryRuleForm = document.getElementById('categoryRuleForm');
+  if (categoryRuleForm) {
+    categoryRuleForm.addEventListener('submit', handleSubmitCategoryRule);
+  }
+  document.querySelectorAll('[data-rule-delete-id]').forEach((button) => {
+    button.addEventListener('click', () => handleDeleteCategoryRule(button.dataset.ruleDeleteId));
+  });
+  const applyRulesButton = document.getElementById('applyCategoryRulesBtn');
+  if (applyRulesButton) {
+    applyRulesButton.addEventListener('click', async () => {
+      applyRulesButton.disabled = true;
+      try {
+        await applyCategoryRules();
+      } catch (error) {
+        alert(error.message);
+      } finally {
+        const nextButton = document.getElementById('applyCategoryRulesBtn');
+        if (nextButton) nextButton.disabled = false;
+      }
+    });
+  }
 
   document.getElementById('closeModal').addEventListener('click', closeQuickModal);
   document.getElementById('quickModal').addEventListener('click', (event) => {
@@ -1363,6 +1562,7 @@ function bindEvents() {
     const submitBtn = document.getElementById('submitBtn');
     submitBtn.disabled = true;
     try {
+      if (category) await saveCustomCategory(category);
       await createDashboardTransaction(`${prefix}${value}${categorySuffix}`);
     } catch (error) {
       alert(error.message);
@@ -1635,6 +1835,65 @@ function openEditModal(id) {
   setTimeout(() => document.getElementById('editTitle').focus(), 50);
 }
 
+async function handleQuickCategory(id, category, button) {
+  if (!id || !category) return;
+  if (button) button.disabled = true;
+  try {
+    await saveCustomCategory(category);
+    const updated = await updateDashboardTransaction(id, { category });
+    upsertLocalTransaction(updated);
+    render();
+    refreshOverviewQuietly();
+  } catch (error) {
+    alert(error.message);
+  } finally {
+    if (button && document.body.contains(button)) button.disabled = false;
+  }
+}
+
+async function handleSubmitCategoryRule(event) {
+  event.preventDefault();
+  const keyword = document.getElementById('ruleKeyword').value.trim();
+  const category = document.getElementById('ruleCategory').value.trim();
+  if (!keyword) {
+    alert('พิมพ์คำค้นก่อน เช่น amazon cafe');
+    return;
+  }
+  if (!category) {
+    alert('เลือกหมวดก่อน');
+    return;
+  }
+
+  const saveBtn = document.getElementById('saveCategoryRuleBtn');
+  saveBtn.disabled = true;
+  try {
+    await saveCustomCategory(category);
+    await saveCategoryRule({ keyword, category });
+    document.getElementById('ruleKeyword').value = '';
+    setCategoryValue('ruleCategory', '');
+    state.activeView = 'transactions';
+    render();
+    scrollToSection('edit');
+  } catch (error) {
+    alert(error.message);
+  } finally {
+    const nextBtn = document.getElementById('saveCategoryRuleBtn');
+    if (nextBtn) nextBtn.disabled = false;
+  }
+}
+
+async function handleDeleteCategoryRule(id) {
+  if (!confirm('ลบกฎหมวดนี้ใช่ไหม?')) return;
+  try {
+    await deleteCategoryRule(id);
+    state.activeView = 'transactions';
+    render();
+    scrollToSection('edit');
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
 function closeEditModal() {
   state.editingTransaction = null;
   document.getElementById('editModal').classList.remove('open');
@@ -1655,6 +1914,7 @@ async function handleSubmitEdit(event) {
       transactionDate: document.getElementById('editDate').value,
       note: document.getElementById('editNote').value
     });
+    await saveCustomCategory(document.getElementById('editCategory').value);
     upsertLocalTransaction(updated);
     closeEditModal();
     render();
@@ -1695,8 +1955,10 @@ async function handleSubmitBudget(event) {
   const saveBtn = document.getElementById('saveBudgetBtn');
   saveBtn.disabled = true;
   try {
+    const category = document.getElementById('budgetCategory').value || 'ทั้งหมด';
+    if (category !== 'ทั้งหมด') await saveCustomCategory(category);
     await createDashboardBudget({
-      category: document.getElementById('budgetCategory').value || 'ทั้งหมด',
+      category,
       amount: document.getElementById('budgetAmount').value,
       month: state.month
     });

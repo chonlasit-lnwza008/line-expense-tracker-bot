@@ -85,3 +85,26 @@ CREATE TABLE IF NOT EXISTS debt_payments (
 );
 
 CREATE INDEX IF NOT EXISTS idx_debt_payments_user_date ON debt_payments(userId, paymentDate);
+
+CREATE TABLE IF NOT EXISTS category_rules (
+  id BIGSERIAL PRIMARY KEY,
+  userId BIGINT NOT NULL REFERENCES users(id),
+  keyword TEXT NOT NULL,
+  category TEXT NOT NULL,
+  createdAt TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updatedAt TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(userId, keyword)
+);
+
+CREATE INDEX IF NOT EXISTS idx_category_rules_user ON category_rules(userId, keyword);
+
+CREATE TABLE IF NOT EXISTS user_categories (
+  id BIGSERIAL PRIMARY KEY,
+  userId BIGINT NOT NULL REFERENCES users(id),
+  name TEXT NOT NULL,
+  createdAt TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updatedAt TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(userId, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_categories_user ON user_categories(userId, name);

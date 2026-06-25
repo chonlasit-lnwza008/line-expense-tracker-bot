@@ -27,7 +27,16 @@ app.get('/', (req, res) => {
 
 app.get('/health/db', async (req, res, next) => {
   try {
-    const expectedTables = ['users', 'transactions', 'budgets', 'goals', 'debts', 'debt_payments'];
+    const expectedTables = [
+      'users',
+      'transactions',
+      'budgets',
+      'goals',
+      'debts',
+      'debt_payments',
+      'category_rules',
+      'user_categories'
+    ];
     const tables = db.client === 'postgres'
       ? await db.all(
         `SELECT table_name AS name
@@ -41,7 +50,7 @@ app.get('/health/db', async (req, res, next) => {
         `SELECT name
          FROM sqlite_master
          WHERE type = 'table'
-           AND name IN ('users', 'transactions', 'budgets', 'goals', 'debts', 'debt_payments')
+           AND name IN ('users', 'transactions', 'budgets', 'goals', 'debts', 'debt_payments', 'category_rules', 'user_categories')
          ORDER BY name`
       );
 
@@ -285,6 +294,83 @@ app.delete('/api/liff/debts/:id', async (req, res, next) => {
       return res.status(404).json({ error: 'Debt not found' });
     }
     res.json({ debt });
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+    next(error);
+  }
+});
+
+app.post('/api/liff/categories', express.json({ limit: '12kb' }), async (req, res, next) => {
+  try {
+    const lineUserId = await resolveLiffLineUserId(req);
+    const category = await liffDashboardService.upsertCustomCategoryFromDashboard(lineUserId, req.body || {});
+    res.status(201).json({ category });
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        error: error.message,
+        reason: error.reason
+      });
+    }
+    next(error);
+  }
+});
+
+app.delete('/api/liff/categories/:id', async (req, res, next) => {
+  try {
+    const lineUserId = await resolveLiffLineUserId(req);
+    const category = await liffDashboardService.deleteCustomCategoryFromDashboard(lineUserId, req.params.id);
+    if (!category) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+    res.json({ category });
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+    next(error);
+  }
+});
+
+app.post('/api/liff/category-rules', express.json({ limit: '16kb' }), async (req, res, next) => {
+  try {
+    const lineUserId = await resolveLiffLineUserId(req);
+    const rule = await liffDashboardService.upsertCategoryRuleFromDashboard(lineUserId, req.body || {});
+    res.status(201).json({ rule });
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        error: error.message,
+        reason: error.reason
+      });
+    }
+    next(error);
+  }
+});
+
+app.delete('/api/liff/category-rules/:id', async (req, res, next) => {
+  try {
+    const lineUserId = await resolveLiffLineUserId(req);
+    const rule = await liffDashboardService.deleteCategoryRuleFromDashboard(lineUserId, req.params.id);
+    if (!rule) {
+      return res.status(404).json({ error: 'Category rule not found' });
+    }
+    res.json({ rule });
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+    next(error);
+  }
+});
+
+app.post('/api/liff/category-rules/apply', express.json({ limit: '12kb' }), async (req, res, next) => {
+  try {
+    const lineUserId = await resolveLiffLineUserId(req);
+    const result = await liffDashboardService.applyCategoryRulesFromDashboard(lineUserId, req.body || {});
+    res.json(result);
   } catch (error) {
     if (error.statusCode) {
       return res.status(error.statusCode).json({ error: error.message });

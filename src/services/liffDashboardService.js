@@ -2,6 +2,7 @@ const db = require('../config/database');
 const transactionService = require('./transactionService');
 const exportService = require('./exportService');
 const debtService = require('./debtService');
+const categoryRuleService = require('./categoryRuleService');
 const { parseTextTransaction } = require('../parser/textParser');
 const { currentMonth, monthRange, toDateOnly, formatDisplayDate } = require('../utils/dateUtils');
 const { normalizeTransaction } = require('./summaryService');
@@ -244,6 +245,8 @@ async function getOverview(lineUserId, month = currentMonth()) {
     goals: await getGoals(user.id),
     debts,
     debtSummary: debtService.summarizeDebts(debts),
+    customCategories: await categoryRuleService.listCustomCategories(user.id),
+    categoryRules: await categoryRuleService.listRules(user.id),
     categories,
     daily: groupByDate(monthlyRows),
     transactions: monthlyRows.map(mapTransaction),
@@ -338,6 +341,11 @@ async function createFromText(lineUserId, text) {
     error.reason = parsed.reason;
     throw error;
   }
+  const userCategory = await categoryRuleService.detectUserCategory(user.id, `${parsed.title || ''} ${text || ''}`);
+  if (userCategory) {
+    parsed.category = userCategory;
+  }
+  await categoryRuleService.upsertCustomCategory(user.id, parsed.category);
 
   const tx = await transactionService.createTransaction(user.id, {
     ...parsed,
@@ -408,6 +416,9 @@ async function updateFromDashboard(lineUserId, id, input) {
   }
 
   const updated = await transactionService.updateTransaction(user.id, Number(id), patch);
+  if (updated && patch.category) {
+    await categoryRuleService.upsertCustomCategory(user.id, patch.category);
+  }
   return updated ? mapTransaction(normalizeTransaction(updated)) : null;
 }
 
@@ -433,6 +444,9 @@ async function setBudgetFromDashboard(lineUserId, input = {}) {
     error.statusCode = 400;
     error.reason = 'invalid_month';
     throw error;
+  }
+  if (category !== 'ทั้งหมด') {
+    await categoryRuleService.upsertCustomCategory(user.id, category);
   }
 
   if (db.client === 'postgres') {
@@ -570,6 +584,33 @@ async function exportPdf(lineUserId, scope = 'month', options = {}) {
   return exportService.exportTransactionsPdf(user.id, scope === 'all' ? 'all' : 'month', options);
 }
 
+async function upsertCategoryRuleFromDashboard(lineUserId, input = {}) {
+  const user = await transactionService.findOrCreateUser(lineUserId);
+  return categoryRuleService.upsertRule(user.id, input);
+}
+
+async function deleteCategoryRuleFromDashboard(lineUserId, id) {
+  const user = await transactionService.findOrCreateUser(lineUserId);
+  return categoryRuleService.deleteRule(user.id, Number(id));
+}
+
+async function applyCategoryRulesFromDashboard(lineUserId, input = {}) {
+  const user = await transactionService.findOrCreateUser(lineUserId);
+  return categoryRuleService.applyRulesToTransactions(user.id, {
+    month: input.month || currentMonth()
+  });
+}
+
+async function upsertCustomCategoryFromDashboard(lineUserId, input = {}) {
+  const user = await transactionService.findOrCreateUser(lineUserId);
+  return categoryRuleService.upsertCustomCategory(user.id, input);
+}
+
+async function deleteCustomCategoryFromDashboard(lineUserId, id) {
+  const user = await transactionService.findOrCreateUser(lineUserId);
+  return categoryRuleService.deleteCustomCategory(user.id, Number(id));
+}
+
 module.exports = {
   getOverview,
   getTransactionImage,
@@ -583,6 +624,11 @@ module.exports = {
   updateDebtFromDashboard,
   payDebtFromDashboard,
   cancelDebtFromDashboard,
+  upsertCustomCategoryFromDashboard,
+  deleteCustomCategoryFromDashboard,
+  upsertCategoryRuleFromDashboard,
+  deleteCategoryRuleFromDashboard,
+  applyCategoryRulesFromDashboard,
   exportCsv,
   exportPdf
 };

@@ -263,6 +263,50 @@ test('LIFF dashboard accepts a custom debt type', async () => {
   assert.equal(overview.debtSummary.payableTotal, 50000);
 });
 
+test('LIFF dashboard persists custom categories and applies personal category rules', async () => {
+  await ensureDatabase();
+  const lineUserId = uniqueLineUserId('custom-category');
+
+  const customCategory = await liffDashboardService.upsertCustomCategoryFromDashboard(lineUserId, {
+    name: 'คาเฟ่'
+  });
+  assert.equal(customCategory.name, 'คาเฟ่');
+
+  const rule = await liffDashboardService.upsertCategoryRuleFromDashboard(lineUserId, {
+    keyword: 'amazon cafe',
+    category: 'คาเฟ่'
+  });
+  assert.equal(rule.keyword, 'amazon cafe');
+  assert.equal(rule.category, 'คาเฟ่');
+
+  const transaction = await liffDashboardService.createFromText(lineUserId, 'amazon cafe 80');
+  assert.equal(transaction.category, 'คาเฟ่');
+
+  const overview = await liffDashboardService.getOverview(lineUserId);
+  assert.ok(overview.customCategories.some((category) => category.name === 'คาเฟ่'));
+  assert.ok(overview.categoryRules.some((item) => item.keyword === 'amazon cafe' && item.category === 'คาเฟ่'));
+});
+
+test('LIFF dashboard can re-apply category rules to existing monthly transactions', async () => {
+  await ensureDatabase();
+  const lineUserId = uniqueLineUserId('apply-category-rules');
+
+  const transaction = await liffDashboardService.createFromText(lineUserId, 'foobarxyz 120');
+  assert.notEqual(transaction.category, 'ทดสอบเอง');
+
+  await liffDashboardService.upsertCategoryRuleFromDashboard(lineUserId, {
+    keyword: 'foobarxyz',
+    category: 'ทดสอบเอง'
+  });
+
+  const result = await liffDashboardService.applyCategoryRulesFromDashboard(lineUserId);
+  assert.equal(result.updatedCount, 1);
+
+  const overview = await liffDashboardService.getOverview(lineUserId);
+  const updated = overview.transactions.find((row) => row.id === transaction.id);
+  assert.equal(updated.category, 'ทดสอบเอง');
+});
+
 test('LIFF dashboard returns monthly transactions, report, spending plan, and image metadata', async () => {
   await ensureDatabase();
   const lineUserId = uniqueLineUserId('monthly-tools');

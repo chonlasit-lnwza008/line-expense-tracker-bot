@@ -1079,6 +1079,109 @@ button:disabled {
 .bar-fill.danger-fill { background: linear-gradient(90deg, #e24659, #ff6b6b); }
 
 /* Transactions */
+.rule-panel {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid #d8efe7;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #f0fffa, #ffffff);
+}
+
+.rule-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.rule-head > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.rule-head strong {
+  font-size: 14px;
+}
+
+.rule-head span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.rule-form {
+  display: grid;
+  gap: 10px;
+}
+
+.rule-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  margin: 0;
+}
+
+.rule-form input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #f8fafc;
+  color: var(--ink);
+  padding: 11px 12px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.rule-form input:focus {
+  outline: none;
+  border-color: var(--teal);
+  background: #ffffff;
+}
+
+.rule-list {
+  display: grid;
+  gap: 7px;
+}
+
+.rule-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fbfcfe;
+  padding: 9px 10px;
+}
+
+.rule-item > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.rule-item strong,
+.rule-item span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rule-item strong {
+  font-size: 12px;
+}
+
+.rule-item span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .filter-panel {
   display: grid;
   gap: 10px;
@@ -1215,6 +1318,30 @@ button:disabled {
   font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tx-quick {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-top: 7px;
+  scrollbar-width: none;
+}
+
+.tx-quick::-webkit-scrollbar {
+  display: none;
+}
+
+.quick-category {
+  flex: 0 0 auto;
+  border: 1px solid rgba(21, 168, 107, 0.18);
+  border-radius: 999px;
+  background: #eefcf6;
+  color: #087a4d;
+  font-size: 10px;
+  font-weight: 900;
+  padding: 5px 8px;
   white-space: nowrap;
 }
 
